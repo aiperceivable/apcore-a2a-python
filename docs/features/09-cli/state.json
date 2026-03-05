@@ -1,0 +1,40 @@
+{
+  "feature": "09-cli",
+  "spec": "/Users/tercelyi/Workspace/aipartnerup/apcore-a2a/docs/features/09-cli.md",
+  "status": "completed",
+  "depends_on_features": ["08-public-api"],
+  "target_files": [
+    "src/apcore_a2a/__main__.py"
+  ],
+  "test_files": [
+    "tests/test_cli.py"
+  ],
+  "tasks": [
+    {
+      "id": "T09-01",
+      "title": "[RED] CLI tests",
+      "description": "Write tests/test_cli.py: test main() — missing --extensions-dir→exit 1, non-existent dir→exit 1 with stderr message, not-a-dir→exit 1, zero modules→exit 1, --auth-type bearer without --auth-key→exit 1 (unless JWT_SECRET set), --auth-key file path→reads file, --auth-key literal→uses directly, JWT_SECRET env fallback, --version prints version+exits 0",
+      "status": "completed",
+      "tdd_phase": "red",
+      "file": "tests/test_cli.py"
+    },
+    {
+      "id": "T09-02",
+      "title": "[GREEN] CLI implementation",
+      "description": "Implement src/apcore_a2a/__main__.py: main(), _run_serve(args), _resolve_auth_key(auth_key). argparse with 'serve' subcommand, all flags per spec. Exit codes: 0 (clean), 1 (config error), 2 (runtime error). Key resolution: file>literal>JWT_SECRET env.",
+      "status": "completed",
+      "tdd_phase": "green",
+      "depends_on": ["T09-01"],
+      "file": "src/apcore_a2a/__main__.py"
+    },
+    {
+      "id": "T09-03",
+      "title": "[REFACTOR] CLI cleanup",
+      "description": "Verify all validation errors go to stderr, verify exit codes exactly (0/1/2), test --version output format, ensure coverage exclusion for __main__.py is correct in pyproject.toml",
+      "status": "completed",
+      "tdd_phase": "refactor",
+      "depends_on": ["T09-02"],
+      "file": "src/apcore_a2a/__main__.py"
+    }
+  ]
+}

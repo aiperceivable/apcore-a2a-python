@@ -1,0 +1,50 @@
+{
+  "feature": "08-public-api",
+  "spec": "/Users/tercelyi/Workspace/aipartnerup/apcore-a2a/docs/features/08-public-api.md",
+  "status": "completed",
+  "depends_on_features": ["01-adapters", "02-storage", "03-server-core", "04-streaming", "05-push-notifications", "06-auth", "07-client"],
+  "target_files": [
+    "src/apcore_a2a/_serve.py",
+    "src/apcore_a2a/__init__.py"
+  ],
+  "test_files": [
+    "tests/test_public_api.py"
+  ],
+  "tasks": [
+    {
+      "id": "T08-01",
+      "title": "[RED] Public API tests",
+      "description": "Write tests/test_public_api.py: test async_serve() returns Starlette app, zero-module registry→ValueError, invalid auth protocol→TypeError, invalid task_store protocol→TypeError, default task_store is InMemoryTaskStore, name/version/description resolution order, A2AClient importable from top level",
+      "status": "completed",
+      "tdd_phase": "red",
+      "file": "tests/test_public_api.py"
+    },
+    {
+      "id": "T08-02",
+      "title": "[GREEN] async_serve() implementation",
+      "description": "Implement async_serve() in src/apcore_a2a/_serve.py: resolve_registry/resolve_executor, validate ≥1 module, resolve name/version/description from registry config with fallbacks, default task_store=InMemoryTaskStore(), protocol validation for auth and task_store, call A2AServerFactory().create(), return Starlette app",
+      "status": "completed",
+      "tdd_phase": "green",
+      "depends_on": ["T08-01"],
+      "file": "src/apcore_a2a/_serve.py"
+    },
+    {
+      "id": "T08-03",
+      "title": "[GREEN] serve() implementation",
+      "description": "Implement serve() in src/apcore_a2a/_serve.py: same validation as async_serve, configure logging, set up SIGINT/SIGTERM handlers, run uvicorn.Server blocking. serve() calls async_serve() internals.",
+      "status": "completed",
+      "tdd_phase": "green",
+      "depends_on": ["T08-02"],
+      "file": "src/apcore_a2a/_serve.py"
+    },
+    {
+      "id": "T08-04",
+      "title": "[REFACTOR] Public API cleanup",
+      "description": "Verify __init__.py exports: serve, async_serve, A2AClient, __version__. Test ASGI embedding pattern with Starlette TestClient. Verify A2AClient import from top level has zero server imports. Run mypy.",
+      "status": "completed",
+      "tdd_phase": "refactor",
+      "depends_on": ["T08-03"],
+      "file": "src/apcore_a2a/__init__.py"
+    }
+  ]
+}

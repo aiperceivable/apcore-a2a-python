@@ -1,0 +1,101 @@
+{
+  "feature": "03-server-core",
+  "spec": "/Users/tercelyi/Workspace/aipartnerup/apcore-a2a/docs/features/03-server-core.md",
+  "status": "pending",
+  "depends_on_features": ["01-adapters", "02-storage"],
+  "target_files": [
+    "src/apcore_a2a/server/task_manager.py",
+    "src/apcore_a2a/server/router.py",
+    "src/apcore_a2a/server/transport.py",
+    "src/apcore_a2a/server/factory.py",
+    "src/apcore_a2a/server/__init__.py"
+  ],
+  "test_files": [
+    "tests/server/test_task_manager.py",
+    "tests/server/test_execution_router.py",
+    "tests/server/test_transport.py",
+    "tests/server/test_server_factory.py"
+  ],
+  "tasks": [
+    {
+      "id": "T03-01",
+      "title": "[RED] TaskManager tests",
+      "description": "Write tests/server/test_task_manager.py: test create_task (UUID gen, submitted state), transition (valid/invalid), cancel_task (terminal→error), subscribe/unsubscribe (queue events), history tracking, concurrent transitions on same task serialized",
+      "status": "pending",
+      "tdd_phase": "red",
+      "file": "tests/server/test_task_manager.py"
+    },
+    {
+      "id": "T03-02",
+      "title": "[GREEN] TaskManager implementation",
+      "description": "Implement src/apcore_a2a/server/task_manager.py: TaskManager with _TRANSITIONS dict, per-task asyncio.Lock, create_task, transition, get_task, list_tasks, cancel_task, subscribe/unsubscribe. Exceptions: TaskNotFoundError, TaskNotCancelableError, InvalidStateTransitionError.",
+      "status": "pending",
+      "tdd_phase": "green",
+      "depends_on": ["T03-01"],
+      "file": "src/apcore_a2a/server/task_manager.py"
+    },
+    {
+      "id": "T03-03",
+      "title": "[RED] ExecutionRouter tests",
+      "description": "Write tests/server/test_execution_router.py: test handle_message_send (success, missing skillId, unknown skill, ApprovalPendingError→input_required, exception→failed, timeout), handle_resume, identity bridging via auth_identity_var",
+      "status": "pending",
+      "tdd_phase": "red",
+      "depends_on": ["T03-02"],
+      "file": "tests/server/test_execution_router.py"
+    },
+    {
+      "id": "T03-04",
+      "title": "[GREEN] ExecutionRouter implementation",
+      "description": "Implement src/apcore_a2a/server/router.py: ExecutionRouter.handle_message_send, handle_message_stream, handle_resume. Duck-type executor. Use asyncio.wait_for for timeout. Bridge auth_identity_var to Context.",
+      "status": "pending",
+      "tdd_phase": "green",
+      "depends_on": ["T03-03"],
+      "file": "src/apcore_a2a/server/router.py"
+    },
+    {
+      "id": "T03-05",
+      "title": "[RED] TransportManager tests",
+      "description": "Write tests/server/test_transport.py: test handle_jsonrpc dispatch table (all 9 methods + unknown→-32601), Content-Type validation (415), body limit (413), JSON parse error (-32700), JSON-RPC structure (-32600), handle_agent_card, handle_health",
+      "status": "pending",
+      "tdd_phase": "red",
+      "depends_on": ["T03-02", "T03-04"],
+      "file": "tests/server/test_transport.py"
+    },
+    {
+      "id": "T03-06",
+      "title": "[GREEN] TransportManager implementation",
+      "description": "Implement src/apcore_a2a/server/transport.py: TransportManager with Starlette Request handling, JSON-RPC dispatch, _ok_response/_error_response envelopes, handle_agent_card (Cache-Control: max-age=300), handle_health",
+      "status": "pending",
+      "tdd_phase": "green",
+      "depends_on": ["T03-05"],
+      "file": "src/apcore_a2a/server/transport.py"
+    },
+    {
+      "id": "T03-07",
+      "title": "[RED] A2AServerFactory tests",
+      "description": "Write tests/server/test_server_factory.py: test create() returns (Starlette, agent_card), routes registered (/.well-known/agent.json, /, /health), AuthMiddleware applied when auth provided, CORSMiddleware applied when cors_origins provided",
+      "status": "pending",
+      "tdd_phase": "red",
+      "depends_on": ["T03-04", "T03-06"],
+      "file": "tests/server/test_server_factory.py"
+    },
+    {
+      "id": "T03-08",
+      "title": "[GREEN] A2AServerFactory implementation",
+      "description": "Implement src/apcore_a2a/server/factory.py: A2AServerFactory.create() wires all components: SkillMapper, AgentCardBuilder, TaskManager, ExecutionRouter, StreamingHandler, PushNotificationManager (optional), TransportManager, AuthMiddleware, CORSMiddleware",
+      "status": "pending",
+      "tdd_phase": "green",
+      "depends_on": ["T03-07"],
+      "file": "src/apcore_a2a/server/factory.py"
+    },
+    {
+      "id": "T03-09",
+      "title": "[REFACTOR] Server core cleanup",
+      "description": "Ensure all server components have correct type hints, run mypy on server/, verify all JSON-RPC error codes match spec (-32700, -32600, -32601, -32602, -32001, -32002)",
+      "status": "pending",
+      "tdd_phase": "refactor",
+      "depends_on": ["T03-08"],
+      "file": "src/apcore_a2a/server/__init__.py"
+    }
+  ]
+}

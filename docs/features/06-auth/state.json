@@ -1,0 +1,61 @@
+{
+  "feature": "06-auth",
+  "spec": "/Users/tercelyi/Workspace/aipartnerup/apcore-a2a/docs/features/06-auth.md",
+  "status": "pending",
+  "depends_on_features": [],
+  "target_files": [
+    "src/apcore_a2a/auth/protocol.py",
+    "src/apcore_a2a/auth/jwt.py",
+    "src/apcore_a2a/auth/middleware.py",
+    "src/apcore_a2a/auth/__init__.py"
+  ],
+  "test_files": [
+    "tests/auth/test_jwt_authenticator.py",
+    "tests/auth/test_auth_middleware.py"
+  ],
+  "tasks": [
+    {
+      "id": "T06-01",
+      "title": "[RED] JWTAuthenticator tests",
+      "description": "Write tests/auth/test_jwt_authenticator.py: test authenticate() — missing header→None, non-Bearer→None, invalid JWT→None, expired→None, wrong issuer→None, wrong audience→None, valid JWT→Identity, missing required claim→None, ClaimMapping custom fields, security_schemes() returns bearer scheme",
+      "status": "pending",
+      "tdd_phase": "red",
+      "file": "tests/auth/test_jwt_authenticator.py"
+    },
+    {
+      "id": "T06-02",
+      "title": "[GREEN] Authenticator Protocol + JWTAuthenticator implementation",
+      "description": "Implement src/apcore_a2a/auth/protocol.py (@runtime_checkable Authenticator Protocol) and src/apcore_a2a/auth/jwt.py: ClaimMapping dataclass, JWTAuthenticator (PyJWT decode, expiry/issuer/audience checks, claims mapping to apcore Identity, NEVER raises)",
+      "status": "pending",
+      "tdd_phase": "green",
+      "depends_on": ["T06-01"],
+      "file": "src/apcore_a2a/auth/jwt.py"
+    },
+    {
+      "id": "T06-03",
+      "title": "[RED] AuthMiddleware tests",
+      "description": "Write tests/auth/test_auth_middleware.py: test ASGI middleware — exempt paths bypass auth, non-HTTP scopes skipped, valid credentials→identity set in ContextVar, invalid credentials+require_auth=True→401 with WWW-Authenticate: Bearer, require_auth=False→proceed with identity=None, ContextVar reset in finally",
+      "status": "pending",
+      "tdd_phase": "red",
+      "file": "tests/auth/test_auth_middleware.py"
+    },
+    {
+      "id": "T06-04",
+      "title": "[GREEN] AuthMiddleware implementation",
+      "description": "Implement src/apcore_a2a/auth/middleware.py: auth_identity_var ContextVar, AuthMiddleware ASGI class — skip non-http scopes, check exempt_paths/exempt_prefixes, extract lowercase headers, call authenticator.authenticate(), 401 if required and None, set ContextVar, call downstream, reset ContextVar in finally",
+      "status": "pending",
+      "tdd_phase": "green",
+      "depends_on": ["T06-03", "T06-02"],
+      "file": "src/apcore_a2a/auth/middleware.py"
+    },
+    {
+      "id": "T06-05",
+      "title": "[REFACTOR] Auth cleanup",
+      "description": "Verify default exempt paths ({/.well-known/agent.json, /health, /metrics}), verify isinstance(JWTAuthenticator(...), Authenticator) is True, run mypy on auth/",
+      "status": "pending",
+      "tdd_phase": "refactor",
+      "depends_on": ["T06-04"],
+      "file": "src/apcore_a2a/auth/__init__.py"
+    }
+  ]
+}

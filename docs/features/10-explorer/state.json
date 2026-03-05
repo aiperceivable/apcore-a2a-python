@@ -1,0 +1,42 @@
+{
+  "feature": "10-explorer",
+  "spec": "/Users/tercelyi/Workspace/aipartnerup/apcore-a2a/docs/features/10-explorer.md",
+  "status": "completed",
+  "depends_on_features": ["03-server-core"],
+  "target_files": [
+    "src/apcore_a2a/explorer/app.py",
+    "src/apcore_a2a/explorer/index.html",
+    "src/apcore_a2a/explorer/__init__.py"
+  ],
+  "test_files": [
+    "tests/explorer/test_explorer.py"
+  ],
+  "tasks": [
+    {
+      "id": "T10-01",
+      "title": "[RED] Explorer tests",
+      "description": "Write tests/explorer/test_explorer.py: test create_explorer_mount() returns Starlette Mount, GET {prefix}/ returns 200 HTML, GET {prefix}/agent-card returns agent_card JSON, mount is exempt from auth (added to exempt_prefixes), default prefix is /explorer",
+      "status": "completed",
+      "tdd_phase": "red",
+      "file": "tests/explorer/test_explorer.py"
+    },
+    {
+      "id": "T10-02",
+      "title": "[GREEN] Explorer implementation",
+      "description": "Implement src/apcore_a2a/explorer/app.py: create_explorer_mount(agent_card, router, *, explorer_prefix='/explorer', authenticator=None) → Starlette Mount with two routes: GET / (serve index.html as HTMLResponse) and GET /agent-card (serve agent_card as JSONResponse). Create src/apcore_a2a/explorer/index.html: self-contained HTML with no CDN deps — agent card display, skills list, message composer, SSE stream viewer, task state viewer.",
+      "status": "completed",
+      "tdd_phase": "green",
+      "depends_on": ["T10-01"],
+      "file": "src/apcore_a2a/explorer/app.py"
+    },
+    {
+      "id": "T10-03",
+      "title": "[REFACTOR] Explorer cleanup",
+      "description": "Verify index.html has no external CDN links, verify explorer mount has no auth/storage imports, run mypy on explorer/",
+      "status": "completed",
+      "tdd_phase": "refactor",
+      "depends_on": ["T10-02"],
+      "file": "src/apcore_a2a/explorer/__init__.py"
+    }
+  ]
+}

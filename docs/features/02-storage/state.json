@@ -1,0 +1,50 @@
+{
+  "feature": "02-storage",
+  "spec": "/Users/tercelyi/Workspace/aipartnerup/apcore-a2a/docs/features/02-storage.md",
+  "status": "pending",
+  "target_files": [
+    "src/apcore_a2a/storage/protocol.py",
+    "src/apcore_a2a/storage/memory.py",
+    "src/apcore_a2a/storage/__init__.py"
+  ],
+  "test_files": [
+    "tests/storage/test_in_memory_task_store.py"
+  ],
+  "tasks": [
+    {
+      "id": "T02-01",
+      "title": "[RED] TaskStore protocol tests",
+      "description": "Write tests/storage/test_in_memory_task_store.py: test save/get/list/delete, save_push_config/get_push_config/delete_push_config, cursor pagination, max_tasks OverflowError, context_id filter",
+      "status": "pending",
+      "tdd_phase": "red",
+      "file": "tests/storage/test_in_memory_task_store.py"
+    },
+    {
+      "id": "T02-02",
+      "title": "[GREEN] TaskStore protocol definition",
+      "description": "Implement src/apcore_a2a/storage/protocol.py: @runtime_checkable TaskStore Protocol with all 7 methods: save, get, list, delete, save_push_config, get_push_config, delete_push_config",
+      "status": "pending",
+      "tdd_phase": "green",
+      "depends_on": ["T02-01"],
+      "file": "src/apcore_a2a/storage/protocol.py"
+    },
+    {
+      "id": "T02-03",
+      "title": "[GREEN] InMemoryTaskStore implementation",
+      "description": "Implement src/apcore_a2a/storage/memory.py: InMemoryTaskStore with asyncio.Lock, max_tasks cap (OverflowError), cursor pagination (insertion order), all protocol methods",
+      "status": "pending",
+      "tdd_phase": "green",
+      "depends_on": ["T02-01", "T02-02"],
+      "file": "src/apcore_a2a/storage/memory.py"
+    },
+    {
+      "id": "T02-04",
+      "title": "[REFACTOR] Storage cleanup",
+      "description": "Verify isinstance(InMemoryTaskStore(), TaskStore) returns True, run mypy on storage/, ensure all edge cases tested (list with cursor, empty store, delete non-existent)",
+      "status": "pending",
+      "tdd_phase": "refactor",
+      "depends_on": ["T02-03"],
+      "file": "src/apcore_a2a/storage/__init__.py"
+    }
+  ]
+}

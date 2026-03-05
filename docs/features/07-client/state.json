@@ -1,0 +1,79 @@
+{
+  "feature": "07-client",
+  "spec": "/Users/tercelyi/Workspace/aipartnerup/apcore-a2a/docs/features/07-client.md",
+  "status": "pending",
+  "depends_on_features": [],
+  "target_files": [
+    "src/apcore_a2a/client/exceptions.py",
+    "src/apcore_a2a/client/card_fetcher.py",
+    "src/apcore_a2a/client/client.py",
+    "src/apcore_a2a/client/__init__.py"
+  ],
+  "test_files": [
+    "tests/client/test_a2a_client.py",
+    "tests/client/test_agent_card_fetcher.py"
+  ],
+  "tasks": [
+    {
+      "id": "T07-01",
+      "title": "[RED] Client exceptions tests",
+      "description": "Write tests/client/test_a2a_client.py (part 1): test exception hierarchy — A2AClientError is base, A2AConnectionError/A2ADiscoveryError/TaskNotFoundError/TaskNotCancelableError/A2AServerError all subclass it. Test str() representations.",
+      "status": "pending",
+      "tdd_phase": "red",
+      "file": "tests/client/test_a2a_client.py"
+    },
+    {
+      "id": "T07-02",
+      "title": "[GREEN] Client exceptions implementation",
+      "description": "Implement src/apcore_a2a/client/exceptions.py: A2AClientError (base), A2AConnectionError, A2ADiscoveryError, TaskNotFoundError(task_id), TaskNotCancelableError(state), A2AServerError(message, code=-32603)",
+      "status": "pending",
+      "tdd_phase": "green",
+      "depends_on": ["T07-01"],
+      "file": "src/apcore_a2a/client/exceptions.py"
+    },
+    {
+      "id": "T07-03",
+      "title": "[RED] AgentCardFetcher tests",
+      "description": "Write tests/client/test_agent_card_fetcher.py: test fetch() — HTTP 200→returns dict, HTTP 4xx→A2ADiscoveryError, invalid JSON→A2ADiscoveryError, TTL cache (second call within TTL uses cache), TTL expired→re-fetches",
+      "status": "pending",
+      "tdd_phase": "red",
+      "file": "tests/client/test_agent_card_fetcher.py"
+    },
+    {
+      "id": "T07-04",
+      "title": "[GREEN] AgentCardFetcher implementation",
+      "description": "Implement src/apcore_a2a/client/card_fetcher.py: AgentCardFetcher with time.monotonic() TTL cache, HTTP GET to /.well-known/agent.json, A2ADiscoveryError on failure/invalid JSON",
+      "status": "pending",
+      "tdd_phase": "green",
+      "depends_on": ["T07-03", "T07-02"],
+      "file": "src/apcore_a2a/client/card_fetcher.py"
+    },
+    {
+      "id": "T07-05",
+      "title": "[RED] A2AClient tests",
+      "description": "Write tests/client/test_a2a_client.py (part 2): test __init__ URL validation (ValueError on bad URL), send_message (success→Task dict, -32001→TaskNotFoundError, -32002→TaskNotCancelableError, HTTP error→A2AConnectionError), cancel_task, get_task, list_tasks, stream_message (yields SSE events, stops on final=true), context manager close()",
+      "status": "pending",
+      "tdd_phase": "red",
+      "depends_on": ["T07-04"],
+      "file": "tests/client/test_a2a_client.py"
+    },
+    {
+      "id": "T07-06",
+      "title": "[GREEN] A2AClient implementation",
+      "description": "Implement src/apcore_a2a/client/client.py: A2AClient — _validate_url, httpx.AsyncClient init with auth header, agent_card property (async via AgentCardFetcher), send_message/get_task/cancel_task/list_tasks via _jsonrpc_call, stream_message (httpx streaming SSE), close/__aenter__/__aexit__. ZERO imports from server/auth/storage/starlette.",
+      "status": "pending",
+      "tdd_phase": "green",
+      "depends_on": ["T07-05"],
+      "file": "src/apcore_a2a/client/client.py"
+    },
+    {
+      "id": "T07-07",
+      "title": "[REFACTOR] Client cleanup",
+      "description": "Verify zero server-side imports, run mypy on client/, test context manager usage, verify JSON-RPC request IDs are unique UUIDs, verify keepalive SSE lines ignored",
+      "status": "pending",
+      "tdd_phase": "refactor",
+      "depends_on": ["T07-06"],
+      "file": "src/apcore_a2a/client/__init__.py"
+    }
+  ]
+}

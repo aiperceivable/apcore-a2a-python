@@ -1,0 +1,117 @@
+{
+  "feature": "01-adapters",
+  "spec": "/Users/tercelyi/Workspace/aipartnerup/apcore-a2a/docs/features/01-adapters.md",
+  "status": "pending",
+  "target_files": [
+    "src/apcore_a2a/adapters/agent_card.py",
+    "src/apcore_a2a/adapters/skill_mapper.py",
+    "src/apcore_a2a/adapters/schema.py",
+    "src/apcore_a2a/adapters/errors.py",
+    "src/apcore_a2a/adapters/parts.py",
+    "src/apcore_a2a/adapters/__init__.py"
+  ],
+  "test_files": [
+    "tests/adapters/test_agent_card_builder.py",
+    "tests/adapters/test_skill_mapper.py",
+    "tests/adapters/test_schema_converter.py",
+    "tests/adapters/test_error_mapper.py",
+    "tests/adapters/test_part_converter.py"
+  ],
+  "tasks": [
+    {
+      "id": "T01-01",
+      "title": "[RED] SchemaConverter tests",
+      "description": "Write tests/adapters/test_schema_converter.py: test convert_for_input/output, $ref inlining, empty schema defaults, max depth protection",
+      "status": "pending",
+      "tdd_phase": "red",
+      "file": "tests/adapters/test_schema_converter.py"
+    },
+    {
+      "id": "T01-02",
+      "title": "[GREEN] SchemaConverter implementation",
+      "description": "Implement src/apcore_a2a/adapters/schema.py: SchemaConverter.convert_for_input/output, _inline_refs, _resolve_ref, _ensure_object_type. Mirror apcore-mcp's schema.py pattern.",
+      "status": "pending",
+      "tdd_phase": "green",
+      "depends_on": ["T01-01"],
+      "file": "src/apcore_a2a/adapters/schema.py"
+    },
+    {
+      "id": "T01-03",
+      "title": "[RED] SkillMapper tests",
+      "description": "Write tests/adapters/test_skill_mapper.py: test to_skill() mapping (module_id→id, humanize→name, tags, examples[:10], input/output modes from schema, annotations→extensions)",
+      "status": "pending",
+      "tdd_phase": "red",
+      "file": "tests/adapters/test_skill_mapper.py"
+    },
+    {
+      "id": "T01-04",
+      "title": "[GREEN] SkillMapper implementation",
+      "description": "Implement src/apcore_a2a/adapters/skill_mapper.py: SkillMapper.to_skill, _humanize_module_id, _compute_input_modes, _compute_output_modes, _build_examples, _build_extensions",
+      "status": "pending",
+      "tdd_phase": "green",
+      "depends_on": ["T01-03"],
+      "file": "src/apcore_a2a/adapters/skill_mapper.py"
+    },
+    {
+      "id": "T01-05",
+      "title": "[RED] AgentCardBuilder tests",
+      "description": "Write tests/adapters/test_agent_card_builder.py: test build() produces valid Agent Card dict, security_schemes added, capabilities computed, caching, invalidate_cache()",
+      "status": "pending",
+      "tdd_phase": "red",
+      "depends_on": ["T01-03"],
+      "file": "tests/adapters/test_agent_card_builder.py"
+    },
+    {
+      "id": "T01-06",
+      "title": "[GREEN] AgentCardBuilder implementation",
+      "description": "Implement src/apcore_a2a/adapters/agent_card.py: AgentCardBuilder.build, build_extended, invalidate_cache. Use SkillMapper internally.",
+      "status": "pending",
+      "tdd_phase": "green",
+      "depends_on": ["T01-05", "T01-04"],
+      "file": "src/apcore_a2a/adapters/agent_card.py"
+    },
+    {
+      "id": "T01-07",
+      "title": "[RED] ErrorMapper tests",
+      "description": "Write tests/adapters/test_error_mapper.py: test to_a2a_error() for ModuleNotFoundError, ValidationError, ACLDeniedError, generic exceptions. Verify sanitization.",
+      "status": "pending",
+      "tdd_phase": "red",
+      "file": "tests/adapters/test_error_mapper.py"
+    },
+    {
+      "id": "T01-08",
+      "title": "[GREEN] ErrorMapper implementation",
+      "description": "Implement src/apcore_a2a/adapters/errors.py: ErrorMapper.to_a2a_error, error code mapping table, sanitization (ACL→-32001, internals never leaked)",
+      "status": "pending",
+      "tdd_phase": "green",
+      "depends_on": ["T01-07"],
+      "file": "src/apcore_a2a/adapters/errors.py"
+    },
+    {
+      "id": "T01-09",
+      "title": "[RED] PartConverter tests",
+      "description": "Write tests/adapters/test_part_converter.py: test parts_to_input (TextPart→str, DataPart→dict, FilePart→path), output_to_parts (str→TextPart, dict→DataPart)",
+      "status": "pending",
+      "tdd_phase": "red",
+      "file": "tests/adapters/test_part_converter.py"
+    },
+    {
+      "id": "T01-10",
+      "title": "[GREEN] PartConverter implementation",
+      "description": "Implement src/apcore_a2a/adapters/parts.py: PartConverter.parts_to_input, output_to_parts, _text_part, _data_part, _file_part",
+      "status": "pending",
+      "tdd_phase": "green",
+      "depends_on": ["T01-09"],
+      "file": "src/apcore_a2a/adapters/parts.py"
+    },
+    {
+      "id": "T01-11",
+      "title": "[REFACTOR] Adapters cleanup",
+      "description": "Refactor adapters: extract shared helpers, ensure __init__.py exports are correct, run mypy+ruff on all adapter files",
+      "status": "pending",
+      "tdd_phase": "refactor",
+      "depends_on": ["T01-02", "T01-04", "T01-06", "T01-08", "T01-10"],
+      "file": "src/apcore_a2a/adapters/__init__.py"
+    }
+  ]
+}

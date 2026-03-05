@@ -1,0 +1,40 @@
+{
+  "feature": "04-streaming",
+  "spec": "/Users/tercelyi/Workspace/aipartnerup/apcore-a2a/docs/features/04-streaming.md",
+  "status": "completed",
+  "depends_on_features": ["03-server-core"],
+  "target_files": [
+    "src/apcore_a2a/server/streaming.py"
+  ],
+  "test_files": [
+    "tests/server/test_streaming_handler.py"
+  ],
+  "tasks": [
+    {
+      "id": "T04-01",
+      "title": "[RED] StreamingHandler tests",
+      "description": "Write tests/server/test_streaming_handler.py: test handle_stream returns StreamingResponse with text/event-stream, first event is 'submitted' within correct format, events forwarded from queue, final=true closes stream, GeneratorExit triggers cancel_task when cancel_on_disconnect=True, keepalive on 30s timeout, handle_resubscribe for terminal/active tasks",
+      "status": "completed",
+      "tdd_phase": "red",
+      "file": "tests/server/test_streaming_handler.py"
+    },
+    {
+      "id": "T04-02",
+      "title": "[GREEN] StreamingHandler implementation",
+      "description": "Implement src/apcore_a2a/server/streaming.py: StreamingHandler.handle_stream, handle_resubscribe, _stream_generator (with background task, queue drain, keepalive 30s, disconnect handling), _format_sse_event ('id: N\\ndata: {json}\\n\\n'), _make_status_event, _make_artifact_event, monotonic event counter per-task",
+      "status": "completed",
+      "tdd_phase": "green",
+      "depends_on": ["T04-01"],
+      "file": "src/apcore_a2a/server/streaming.py"
+    },
+    {
+      "id": "T04-03",
+      "title": "[REFACTOR] Streaming cleanup",
+      "description": "Verify SSE format matches spec exactly, test Cache-Control: no-cache and X-Accel-Buffering: no headers present, verify event_id monotonicity per-task, run mypy",
+      "status": "completed",
+      "tdd_phase": "refactor",
+      "depends_on": ["T04-02"],
+      "file": "src/apcore_a2a/server/streaming.py"
+    }
+  ]
+}

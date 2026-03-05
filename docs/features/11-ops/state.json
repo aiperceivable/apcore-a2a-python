@@ -1,0 +1,60 @@
+{
+  "feature": "11-ops",
+  "spec": "/Users/tercelyi/Workspace/aipartnerup/apcore-a2a/docs/features/11-ops.md",
+  "status": "completed",
+  "depends_on_features": ["03-server-core"],
+  "target_files": [
+    "src/apcore_a2a/server/transport.py",
+    "src/apcore_a2a/server/factory.py",
+    "src/apcore_a2a/adapters/agent_card.py"
+  ],
+  "test_files": [
+    "tests/server/test_ops.py"
+  ],
+  "tasks": [
+    {
+      "id": "T11-01",
+      "title": "[RED] Ops endpoint tests",
+      "description": "Write tests/server/test_ops.py: test GET /health → 200 {status:'ok', module_count:N, uptime_seconds:N}, store unreachable→503 {status:'unhealthy', reason:...}, GET /metrics with metrics=False→404, GET /metrics with metrics=True→200 with counter fields, health exempt from auth",
+      "status": "completed",
+      "tdd_phase": "red",
+      "file": "tests/server/test_ops.py"
+    },
+    {
+      "id": "T11-02",
+      "title": "[GREEN] Health + Metrics endpoints",
+      "description": "Implement handle_health() and handle_metrics() in TransportManager (src/apcore_a2a/server/transport.py): health always returns 200/503, metrics returns 404 by default or 200 with counters when enabled. Track uptime via time.monotonic() at startup. Counters: active, completed, failed, canceled, requests.",
+      "status": "completed",
+      "tdd_phase": "green",
+      "depends_on": ["T11-01"],
+      "file": "src/apcore_a2a/server/transport.py"
+    },
+    {
+      "id": "T11-03",
+      "title": "[RED] Dynamic registration tests",
+      "description": "Write tests/server/test_ops.py (part 2): test register_module() — adds module to registry, invalidates Agent Card cache, rebuilt card includes new skill, Agent Card cache returns stale until invalidated",
+      "status": "completed",
+      "tdd_phase": "red",
+      "depends_on": ["T11-01"],
+      "file": "tests/server/test_ops.py"
+    },
+    {
+      "id": "T11-04",
+      "title": "[GREEN] Dynamic registration implementation",
+      "description": "Implement A2AServerFactory.register_module() in src/apcore_a2a/server/factory.py and AgentCardBuilder.invalidate_cache() in adapters/agent_card.py: register new module in registry, invalidate cached cards, rebuild Agent Card, update TransportManager reference",
+      "status": "completed",
+      "tdd_phase": "green",
+      "depends_on": ["T11-03"],
+      "file": "src/apcore_a2a/server/factory.py"
+    },
+    {
+      "id": "T11-05",
+      "title": "[REFACTOR] Ops cleanup",
+      "description": "Verify /health and /metrics are always in exempt_paths, verify metrics=True adds route, verify cache invalidation is synchronous and immediate, run mypy",
+      "status": "completed",
+      "tdd_phase": "refactor",
+      "depends_on": ["T11-02", "T11-04"],
+      "file": "src/apcore_a2a/server/transport.py"
+    }
+  ]
+}

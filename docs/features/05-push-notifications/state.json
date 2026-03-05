@@ -1,0 +1,40 @@
+{
+  "feature": "05-push-notifications",
+  "spec": "/Users/tercelyi/Workspace/aipartnerup/apcore-a2a/docs/features/05-push-notifications.md",
+  "status": "completed",
+  "depends_on_features": ["02-storage", "03-server-core"],
+  "target_files": [
+    "src/apcore_a2a/server/push.py"
+  ],
+  "test_files": [
+    "tests/server/test_push_notification_manager.py"
+  ],
+  "tasks": [
+    {
+      "id": "T05-01",
+      "title": "[RED] PushNotificationManager tests",
+      "description": "Write tests/server/test_push_notification_manager.py: test set_config (missing id→-32602, missing url→-32602, invalid URL→-32602, HTTP URL in prod→-32602, loopback→-32602, private IP→-32602, task not found→-32001, success→stored), get_config, delete_config, notify (success, retry 3x with delays, mark failed after exhaustion), localhost allowed in test mode",
+      "status": "completed",
+      "tdd_phase": "red",
+      "file": "tests/server/test_push_notification_manager.py"
+    },
+    {
+      "id": "T05-02",
+      "title": "[GREEN] PushNotificationManager implementation",
+      "description": "Implement src/apcore_a2a/server/push.py: PushNotificationManager with httpx.AsyncClient, set_config (SSRF validation: HTTPS-only, reject loopback 127.0.0.1/::1/localhost, reject RFC-1918 ranges), get_config, delete_config, notify (fire-and-forget, 3 retries with [1s,2s,4s] backoff, mark failed)",
+      "status": "completed",
+      "tdd_phase": "green",
+      "depends_on": ["T05-01"],
+      "file": "src/apcore_a2a/server/push.py"
+    },
+    {
+      "id": "T05-03",
+      "title": "[REFACTOR] Push notifications cleanup",
+      "description": "Extract SSRF validation logic into helper, verify all retry delays [1.0, 2.0, 4.0] match spec, verify X-A2A-Notification-Token header sent, run mypy",
+      "status": "completed",
+      "tdd_phase": "refactor",
+      "depends_on": ["T05-02"],
+      "file": "src/apcore_a2a/server/push.py"
+    }
+  ]
+}

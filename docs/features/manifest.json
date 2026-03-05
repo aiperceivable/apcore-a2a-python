@@ -1,0 +1,54 @@
+{
+  "project": "apcore-a2a-python",
+  "version": "0.1.0",
+  "generated": "2026-03-03",
+  "spec_dir": "/Users/tercelyi/Workspace/aipartnerup/apcore-a2a/docs/features",
+  "reference_impl": "/Users/tercelyi/Workspace/aipartnerup/apcore-mcp-python",
+  "total_features": 11,
+  "total_tasks": 44,
+  "execution_order": [
+    {
+      "phase": 1,
+      "parallel": true,
+      "features": ["01-adapters", "02-storage", "06-auth", "07-client"],
+      "reason": "No inter-feature dependencies"
+    },
+    {
+      "phase": 2,
+      "parallel": false,
+      "features": ["03-server-core"],
+      "reason": "Depends on 01-adapters, 02-storage"
+    },
+    {
+      "phase": 3,
+      "parallel": true,
+      "features": ["04-streaming", "05-push-notifications", "10-explorer"],
+      "reason": "All depend on 03-server-core"
+    },
+    {
+      "phase": 4,
+      "parallel": false,
+      "features": ["08-public-api"],
+      "reason": "Depends on all prior features"
+    },
+    {
+      "phase": 5,
+      "parallel": true,
+      "features": ["09-cli", "11-ops"],
+      "reason": "09 depends on 08; 11 depends on 03"
+    }
+  ],
+  "features": [
+    {"id": "01-adapters",          "priority": "P0", "tasks": 11, "status": "completed"},
+    {"id": "02-storage",           "priority": "P0", "tasks": 4,  "status": "completed"},
+    {"id": "03-server-core",       "priority": "P0", "tasks": 9,  "status": "completed"},
+    {"id": "04-streaming",         "priority": "P0", "tasks": 3,  "status": "completed"},
+    {"id": "05-push-notifications","priority": "P1", "tasks": 3,  "status": "completed"},
+    {"id": "06-auth",              "priority": "P1", "tasks": 5,  "status": "completed"},
+    {"id": "07-client",            "priority": "P0", "tasks": 7,  "status": "completed"},
+    {"id": "08-public-api",        "priority": "P0", "tasks": 4,  "status": "completed"},
+    {"id": "09-cli",               "priority": "P1", "tasks": 3,  "status": "completed"},
+    {"id": "10-explorer",          "priority": "P2", "tasks": 3,  "status": "completed"},
+    {"id": "11-ops",               "priority": "P2", "tasks": 5,  "status": "completed"}
+  ]
+}
