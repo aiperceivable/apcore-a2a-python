@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="https://raw.githubusercontent.com/aipartnerup/apcore-a2a/main/apcore-a2a-logo.svg" alt="apcore-a2a logo" width="200"/>
+</div>
+
 # apcore-a2a
 
 [![PyPI](https://img.shields.io/pypi/v/apcore-a2a)](https://pypi.org/project/apcore-a2a/)
