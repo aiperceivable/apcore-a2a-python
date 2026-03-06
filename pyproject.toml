@@ -12,7 +12,7 @@ requires-python = ">=3.11"
 authors = [
     { name = "aipartnerup", email = "team@aipartnerup.com" },
 ]
-keywords = ["apcore", "a2a", "agent", "ai", "server", "client", "protocol", "jwt", "streaming", "webhook"]
+keywords = ["apcore", "a2a", "agent", "ai", "multi-agent", "interoperability", "google-a2a", "server", "client", "protocol", "jwt", "streaming", "webhook"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -23,6 +23,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Framework :: AsyncIO",
 ]
 dependencies = [
     "apcore>=0.7.0",
