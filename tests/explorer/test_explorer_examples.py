@@ -284,17 +284,23 @@ class TestMessageSendGreeting:
 
 class TestMessageSendConvertTemperature:
     def test_celsius_to_fahrenheit(self, client):
-        output = _extract_output(_send(
-            client, "convert_temperature",
-            {"value": 100, "from_unit": "celsius", "to_unit": "fahrenheit"},
-        ))
+        output = _extract_output(
+            _send(
+                client,
+                "convert_temperature",
+                {"value": 100, "from_unit": "celsius", "to_unit": "fahrenheit"},
+            )
+        )
         assert output["result"] == 212.0
 
     def test_fahrenheit_to_celsius(self, client):
-        output = _extract_output(_send(
-            client, "convert_temperature",
-            {"value": 32, "from_unit": "fahrenheit", "to_unit": "celsius"},
-        ))
+        output = _extract_output(
+            _send(
+                client,
+                "convert_temperature",
+                {"value": 32, "from_unit": "fahrenheit", "to_unit": "celsius"},
+            )
+        )
         assert output["result"] == 0.0
 
 

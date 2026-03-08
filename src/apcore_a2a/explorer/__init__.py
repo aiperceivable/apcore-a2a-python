@@ -28,7 +28,9 @@ def create_explorer_mount(
 
     async def serve_agent_card(request):
         # agent_card may be a Pydantic model (a2a.types.AgentCard); serialize it
-        data = agent_card.model_dump(mode="json", exclude_none=True) if hasattr(agent_card, "model_dump") else agent_card
+        data = (
+            agent_card.model_dump(mode="json", exclude_none=True) if hasattr(agent_card, "model_dump") else agent_card
+        )
         return JSONResponse(data)
 
     return Mount(
