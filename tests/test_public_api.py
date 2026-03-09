@@ -218,7 +218,7 @@ async def test_async_serve_name_resolution_registry_config():
 
 
 async def test_async_serve_name_resolution_fallback():
-    """No kwarg, no registry config → name defaults to 'apcore-agent'."""
+    """No kwarg, no registry config → name defaults to 'Apcore Agent'."""
     from starlette.testclient import TestClient
 
     from apcore_a2a import async_serve
@@ -229,7 +229,7 @@ async def test_async_serve_name_resolution_fallback():
     resp = client.get("/.well-known/agent.json")
     assert resp.status_code == 200
     card = resp.json()
-    assert card["name"] == "apcore-agent"
+    assert card["name"] == "Apcore Agent"
 
 
 async def test_async_serve_version_fallback():

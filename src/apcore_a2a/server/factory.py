@@ -290,7 +290,12 @@ class A2AServerFactory:
                 from apcore_a2a.explorer import create_explorer_mount  # type: ignore[import]
 
                 # D3: pass handler so explorer has access to the request handler
-                explorer_mount = create_explorer_mount(agent_card, handler, explorer_prefix=explorer_prefix)
+                explorer_mount = create_explorer_mount(
+                    agent_card,
+                    handler,
+                    explorer_prefix=explorer_prefix,
+                    registry=registry,
+                )
                 custom_routes.append(explorer_mount)
             except Exception:
                 logger.warning("Explorer not available", exc_info=True)

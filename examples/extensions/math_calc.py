@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field
 
-from apcore import ModuleAnnotations
+from apcore import ModuleAnnotations, ModuleExample
 
 
 class MathCalcInput(BaseModel):
@@ -25,6 +25,10 @@ class MathCalc:
     description = "Perform basic arithmetic: add, subtract, multiply, or divide"
     tags = ["math", "utility"]
     annotations = ModuleAnnotations(readonly=True, idempotent=True, open_world=False)
+    examples = [
+        ModuleExample(title='{"a": 3, "b": 5, "op": "add"}', inputs={"a": 3, "b": 5, "op": "add"}),
+        ModuleExample(title='{"a": 10, "b": 4, "op": "div"}', inputs={"a": 10, "b": 4, "op": "div"}),
+    ]
 
     _OPS = {
         "add": ("+", lambda a, b: a + b),

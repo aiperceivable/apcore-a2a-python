@@ -9,19 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Explorer UX improvements (`apcore_a2a.explorer`)
+- **Auth token bar** — persistent token input (`type="password"`) below header with status indicator; automatically included in all requests and generated curl commands
+- **Curl command generation** — collapsible curl block with Copy button after each Send/Stream request; properly escapes shell single quotes in URL, auth header, and body
+- **Clickable skill examples** — example links in the sidebar that auto-fill the Message Composer on click; uses event delegation (data attributes) instead of inline handlers
+- **Schema-based sample inputs** — explorer endpoint now includes `_inputSchemas` from registry; skills without examples auto-generate a sample JSON input from the schema (same clickable UX as explicit examples)
+- **`messageId` in Message Composer** — requests now include the required `messageId` field (was causing `-32602 Field required` errors)
+
 #### Examples (`examples/`)
 - Unified launcher `examples/run.py` — starts all 5 example modules with Explorer UI
 - 3 class-based modules: `text_echo`, `math_calc`, `greeting`
 - 2 binding YAML modules: `convert_temperature`, `word_count` (zero-code integration via `myapp.py`)
 - Binding-only launcher `examples/binding_demo/run.py`
 - `examples/README.md` with quick start, Explorer UI guide, JWT auth, and cURL examples
+- `ModuleExample` definitions for `text_echo`, `math_calc`, `greeting` — provides clickable examples in Explorer
 
 #### Tests
 - 54 integration tests (`tests/explorer/test_explorer_examples.py`) covering Explorer UI, agent card, all 5 skills end-to-end, streaming, task lifecycle, error cases, custom prefix, and disabled explorer
+- 3 new Explorer unit tests: auth bar presence, curl section presence, no inline onclick on example links
 
 ### Fixed
 - **Explorer agent card serialization** — `AgentCard` Pydantic model now properly serialized via `model_dump()` before passing to `JSONResponse` (was causing `TypeError: Object of type AgentCard is not JSON serializable`)
 - **Explorer type hint** — `create_explorer_mount` parameter `agent_card` no longer incorrectly typed as `dict`
+- **SSE stream parsing** — last event in stream was silently dropped when not followed by `\n\n`; remaining buffer is now flushed on stream end
+- **Default agent name** — changed from `"apcore-agent"` to `"Apcore Agent"` to avoid confusion with a package/program name
 
 ### Changed
 - Bumped `apcore` dependency from `>=0.7.0` to `>=0.9.0`

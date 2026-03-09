@@ -15,3 +15,10 @@ bindings:
     idempotent: true
     open_world: false
   auto_schema: true
+  # NOTE: examples defined here are not yet supported by apcore BindingLoader.
+  # Once apcore propagates binding examples to _module_meta, uncomment below:
+  # examples:
+  #   - title: '{"text": "hello world foo bar"}'
+  #     inputs: { text: "hello world foo bar" }
+  #   - title: '{"text": "one\ntwo\nthree"}'
+  #     inputs: { text: "one\ntwo\nthree" }

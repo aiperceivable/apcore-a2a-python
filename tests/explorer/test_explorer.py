@@ -131,3 +131,37 @@ def test_index_html_no_cdn():
     ]
     for url in forbidden:
         assert url not in content, f"index.html must not reference external CDN: {url}"
+
+
+# ── T10-11: explorer HTML contains auth bar ──────────────────────────────────
+
+
+def test_explorer_html_has_auth_bar():
+    client = TestClient(make_test_app(SAMPLE_CARD))
+    html = client.get("/explorer/").text
+    assert "auth-token" in html, "Explorer HTML must contain auth-token input"
+    assert 'type="password"' in html, "Auth token input must be type=password"
+    assert "auth-status" in html, "Explorer HTML must contain auth status badge"
+
+
+# ── T10-12: explorer HTML contains curl section ──────────────────────────────
+
+
+def test_explorer_html_has_curl_section():
+    client = TestClient(make_test_app(SAMPLE_CARD))
+    html = client.get("/explorer/").text
+    assert "curl-section" in html, "Explorer HTML must contain curl section"
+    assert "curl-cmd" in html, "Explorer HTML must contain curl command element"
+    assert "copy-btn" in html, "Explorer HTML must contain copy button"
+
+
+# ── T10-13: explorer HTML has no inline onclick on example links ─────────────
+
+
+def test_explorer_html_no_inline_onclick_examples():
+    """Example links must use data attributes, not inline onclick handlers."""
+    html_path = Path(__file__).parents[2] / "src" / "apcore_a2a" / "explorer" / "index.html"
+    content = html_path.read_text()
+    assert 'onclick="useExample' not in content, "example-link must not use inline onclick"
+    assert "data-skill-id" in content, "example-link must use data-skill-id attribute"
+    assert "data-example" in content, "example-link must use data-example attribute"

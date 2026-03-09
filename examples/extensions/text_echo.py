@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field
 
-from apcore import ModuleAnnotations
+from apcore import ModuleAnnotations, ModuleExample
 
 
 class TextEchoInput(BaseModel):
@@ -21,6 +21,10 @@ class TextEcho:
     description = "Echo input text back, optionally converting to uppercase"
     tags = ["text", "utility"]
     annotations = ModuleAnnotations(readonly=True, idempotent=True, open_world=False)
+    examples = [
+        ModuleExample(title='{"text": "Hello world"}', inputs={"text": "Hello world"}),
+        ModuleExample(title='{"text": "hello", "uppercase": true}', inputs={"text": "hello", "uppercase": True}),
+    ]
 
     def execute(self, inputs: dict, ctx) -> dict:
         text = inputs["text"]

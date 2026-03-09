@@ -105,7 +105,7 @@ async def async_serve(
         registry_or_executor: An extensions directory path (str/Path), apcore
             Registry, or Executor instance.  A path triggers automatic module
             discovery.
-        name: Agent name; falls back to registry config then "apcore-agent".
+        name: Agent name; falls back to registry config then "Apcore Agent".
         description: Agent description; falls back to registry config then
             auto-generated from module count.
         version: Agent version; falls back to registry config then "0.0.0".
@@ -142,7 +142,7 @@ async def async_serve(
     # Step 3: Resolve metadata with fallbacks
     project_config: dict[str, Any] = (getattr(registry, "config", {}) or {}).get("project", {}) or {}
 
-    resolved_name = name or project_config.get("name") or "apcore-agent"
+    resolved_name = name or project_config.get("name") or "Apcore Agent"
     resolved_version = version or project_config.get("version") or "0.0.0"
     resolved_description = (
         description or project_config.get("description") or f"apcore agent with {len(modules)} skills"

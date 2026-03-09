@@ -14,6 +14,7 @@ def create_explorer_mount(
     *,
     explorer_prefix: str = "/explorer",
     authenticator=None,
+    registry=None,
 ) -> Mount:
     """Create a Starlette Mount that serves the A2A Explorer UI.
 
@@ -31,6 +32,18 @@ def create_explorer_mount(
         data = (
             agent_card.model_dump(mode="json", exclude_none=True) if hasattr(agent_card, "model_dump") else agent_card
         )
+        # Attach input schemas for the explorer UI to generate sample inputs
+        if registry is not None:
+            schemas = {}
+            for skill in data.get("skills", []):
+                sid = skill.get("id")
+                if sid:
+                    desc = registry.get_definition(sid)
+                    schema = getattr(desc, "input_schema", None) if desc else None
+                    if isinstance(schema, dict):
+                        schemas[sid] = schema
+            if schemas:
+                data["_inputSchemas"] = schemas
         return JSONResponse(data)
 
     return Mount(

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field
 
-from apcore import ModuleAnnotations
+from apcore import ModuleAnnotations, ModuleExample
 
 
 class GreetingInput(BaseModel):
@@ -23,6 +23,10 @@ class Greeting:
     description = "Generate a personalized greeting in different styles"
     tags = ["text", "fun"]
     annotations = ModuleAnnotations(readonly=True, idempotent=False, open_world=False)
+    examples = [
+        ModuleExample(title='{"name": "Alice", "style": "friendly"}', inputs={"name": "Alice", "style": "friendly"}),
+        ModuleExample(title='{"name": "Bob", "style": "pirate"}', inputs={"name": "Bob", "style": "pirate"}),
+    ]
 
     _STYLES = {
         "friendly": "Hey {name}! Great to see you!",

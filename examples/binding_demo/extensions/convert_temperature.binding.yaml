@@ -16,3 +16,10 @@ bindings:
     idempotent: true
     open_world: false
   auto_schema: true
+  # NOTE: examples defined here are not yet supported by apcore BindingLoader.
+  # Once apcore propagates binding examples to _module_meta, uncomment below:
+  # examples:
+  #   - title: '{"value": 100, "from_unit": "celsius", "to_unit": "fahrenheit"}'
+  #     inputs: { value: 100, from_unit: celsius, to_unit: fahrenheit }
+  #   - title: '{"value": 32, "from_unit": "fahrenheit", "to_unit": "celsius"}'
+  #     inputs: { value: 32, from_unit: fahrenheit, to_unit: celsius }
