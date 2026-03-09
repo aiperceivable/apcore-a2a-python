@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
 from a2a.server.tasks.inmemory_task_store import InMemoryTaskStore
@@ -29,6 +30,9 @@ def _resolve_registry_and_executor(
     """Duck-type resolve a registry and executor from the given object.
 
     Accepted inputs:
+    - A ``str`` or ``pathlib.Path`` pointing to an extensions directory.
+      A Registry will be created, modules discovered, and an Executor built
+      automatically.
     - An apcore Registry (has ``list`` and ``get_definition`` methods).
     - An apcore Executor (has ``call_async`` method; registry obtained from
       ``obj.registry``).
@@ -42,6 +46,15 @@ def _resolve_registry_and_executor(
     Raises:
         TypeError: if the object matches neither shape.
     """
+    # Path shortcut: "./extensions" → Registry + discover + Executor
+    if isinstance(registry_or_executor, (str, Path)):
+        from apcore import Registry
+        from apcore.executor import Executor
+
+        registry = Registry(extensions_dir=str(registry_or_executor))
+        registry.discover()
+        return registry, Executor(registry)
+
     has_list = hasattr(registry_or_executor, "list")
     has_get_def = hasattr(registry_or_executor, "get_definition")
     has_call_async = hasattr(registry_or_executor, "call_async")
@@ -66,7 +79,7 @@ def _resolve_registry_and_executor(
         executor = getattr(registry_or_executor, "executor", registry_or_executor)
         return registry, executor
 
-    raise TypeError("Expected apcore Registry or Executor")
+    raise TypeError("Expected apcore Registry, Executor, or path string")
 
 
 async def async_serve(
@@ -89,7 +102,9 @@ async def async_serve(
     """Build and return a Starlette ASGI app for an A2A agent.
 
     Args:
-        registry_or_executor: An apcore Registry or Executor instance.
+        registry_or_executor: An extensions directory path (str/Path), apcore
+            Registry, or Executor instance.  A path triggers automatic module
+            discovery.
         name: Agent name; falls back to registry config then "apcore-agent".
         description: Agent description; falls back to registry config then
             auto-generated from module count.
@@ -197,7 +212,9 @@ def serve(
     Builds the ASGI app via async_serve() and serves it with uvicorn.
 
     Args:
-        registry_or_executor: An apcore Registry or Executor instance.
+        registry_or_executor: An extensions directory path (str/Path), apcore
+            Registry, or Executor instance.  A path triggers automatic module
+            discovery.
         host: Bind host (default "0.0.0.0").
         port: Bind port (default 8000).
         name: Agent name.

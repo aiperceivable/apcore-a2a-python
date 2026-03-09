@@ -124,7 +124,7 @@ async def test_async_serve_invalid_registry_type_raises_type_error():
     """Passing a plain dict (no list/call_async) → TypeError."""
     from apcore_a2a import async_serve
 
-    with pytest.raises(TypeError, match="Expected apcore Registry or Executor"):
+    with pytest.raises(TypeError, match="Expected apcore Registry"):
         await async_serve({"key": "value"})
 
 
@@ -393,3 +393,86 @@ def test_async_serve_importable_from_top_level():
     from apcore_a2a import async_serve  # noqa: F401
 
     assert callable(async_serve)
+
+
+# ---------------------------------------------------------------------------
+# Path string shortcut tests
+# ---------------------------------------------------------------------------
+
+
+async def test_async_serve_with_path_string(tmp_path):
+    """Passing a path string auto-discovers modules and returns Starlette app."""
+    from apcore_a2a import async_serve
+
+    # Create a minimal class-based module in the extensions dir
+    ext_dir = tmp_path / "extensions"
+    ext_dir.mkdir()
+    (ext_dir / "echo.py").write_text(
+        'from pydantic import BaseModel\n'
+        '\n'
+        'class EchoInput(BaseModel):\n'
+        '    text: str = ""\n'
+        '\n'
+        'class EchoOutput(BaseModel):\n'
+        '    text: str = ""\n'
+        '\n'
+        'class Echo:\n'
+        '    input_schema = EchoInput\n'
+        '    output_schema = EchoOutput\n'
+        '    description = "Echo module"\n'
+        '\n'
+        '    def execute(self, inputs, ctx=None):\n'
+        '        return {"text": inputs.get("text", "")}\n'
+    )
+
+    app = await async_serve(str(ext_dir))
+    assert isinstance(app, Starlette)
+
+    # Verify the discovered module appears in the agent card
+    client = TestClient(app)
+    resp = client.get("/.well-known/agent.json")
+    assert resp.status_code == 200
+    card = resp.json()
+    skill_ids = [s["id"] for s in card.get("skills", [])]
+    assert "echo" in skill_ids
+
+
+async def test_async_serve_with_pathlib_path(tmp_path):
+    """Passing a pathlib.Path works the same as a string path."""
+    from pathlib import Path
+
+    from apcore_a2a import async_serve
+
+    ext_dir = tmp_path / "extensions"
+    ext_dir.mkdir()
+    (ext_dir / "ping.py").write_text(
+        'from pydantic import BaseModel\n'
+        '\n'
+        'class PingInput(BaseModel):\n'
+        '    pass\n'
+        '\n'
+        'class PingOutput(BaseModel):\n'
+        '    pong: bool = True\n'
+        '\n'
+        'class Ping:\n'
+        '    input_schema = PingInput\n'
+        '    output_schema = PingOutput\n'
+        '    description = "Ping module"\n'
+        '\n'
+        '    def execute(self, inputs, ctx=None):\n'
+        '        return {"pong": True}\n'
+    )
+
+    app = await async_serve(Path(ext_dir))
+    assert isinstance(app, Starlette)
+
+
+async def test_async_serve_with_empty_path_raises_value_error(tmp_path):
+    """Path with no modules → ValueError (zero modules)."""
+    from apcore_a2a import async_serve
+
+    empty_dir = tmp_path / "empty"
+    empty_dir.mkdir()
+
+    with pytest.raises(ValueError, match="zero modules"):
+        await async_serve(str(empty_dir))
