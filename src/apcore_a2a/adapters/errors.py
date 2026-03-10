@@ -89,7 +89,10 @@ class ErrorMapper:
         return {"code": _CODE_INTERNAL_ERROR, "message": "Internal server error"}
 
     def _sanitize_message(self, message: str) -> str:
-        """Strip file paths and truncate to 500 characters."""
+        """Strip file paths, traceback lines, and truncate to 500 characters."""
         # Match Unix absolute paths (single or multi-component) and ~ paths
-        message = re.sub(r"~?/[^\s]*", "", message).strip()
+        message = re.sub(r"~?/[^\s]*", "", message)
+        # Strip traceback lines
+        message = re.sub(r"(?m)^.*(?:Traceback|File \"|line \d+).*$", "", message)
+        message = message.strip()
         return message[:500]
