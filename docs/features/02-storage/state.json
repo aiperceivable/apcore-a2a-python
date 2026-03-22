@@ -1,6 +1,6 @@
 {
   "feature": "02-storage",
-  "spec": "/Users/tercelyi/Workspace/aipartnerup/apcore-a2a/docs/features/02-storage.md",
+  "spec": "/Users/tercelyi/Workspace/aiperceivable/apcore-a2a/docs/features/02-storage.md",
   "status": "pending",
   "target_files": [
     "src/apcore_a2a/storage/protocol.py",

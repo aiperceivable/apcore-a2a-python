@@ -1,6 +1,6 @@
 {
   "feature": "06-auth",
-  "spec": "/Users/tercelyi/Workspace/aipartnerup/apcore-a2a/docs/features/06-auth.md",
+  "spec": "/Users/tercelyi/Workspace/aiperceivable/apcore-a2a/docs/features/06-auth.md",
   "status": "pending",
   "depends_on_features": [],
   "target_files": [

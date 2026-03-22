@@ -1,6 +1,6 @@
 {
   "feature": "10-explorer",
-  "spec": "/Users/tercelyi/Workspace/aipartnerup/apcore-a2a/docs/features/10-explorer.md",
+  "spec": "/Users/tercelyi/Workspace/aiperceivable/apcore-a2a/docs/features/10-explorer.md",
   "status": "completed",
   "depends_on_features": ["03-server-core"],
   "target_files": [

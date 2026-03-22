@@ -1,6 +1,6 @@
 {
   "feature": "04-streaming",
-  "spec": "/Users/tercelyi/Workspace/aipartnerup/apcore-a2a/docs/features/04-streaming.md",
+  "spec": "/Users/tercelyi/Workspace/aiperceivable/apcore-a2a/docs/features/04-streaming.md",
   "status": "completed",
   "depends_on_features": ["03-server-core"],
   "target_files": [

@@ -2,8 +2,8 @@
   "project": "apcore-a2a-python",
   "version": "0.1.0",
   "generated": "2026-03-03",
-  "spec_dir": "/Users/tercelyi/Workspace/aipartnerup/apcore-a2a/docs/features",
-  "reference_impl": "/Users/tercelyi/Workspace/aipartnerup/apcore-mcp-python",
+  "spec_dir": "/Users/tercelyi/Workspace/aiperceivable/apcore-a2a/docs/features",
+  "reference_impl": "/Users/tercelyi/Workspace/aiperceivable/apcore-mcp-python",
   "total_features": 11,
   "total_tasks": 44,
   "execution_order": [

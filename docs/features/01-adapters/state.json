@@ -1,6 +1,6 @@
 {
   "feature": "01-adapters",
-  "spec": "/Users/tercelyi/Workspace/aipartnerup/apcore-a2a/docs/features/01-adapters.md",
+  "spec": "/Users/tercelyi/Workspace/aiperceivable/apcore-a2a/docs/features/01-adapters.md",
   "status": "pending",
   "target_files": [
     "src/apcore_a2a/adapters/agent_card.py",

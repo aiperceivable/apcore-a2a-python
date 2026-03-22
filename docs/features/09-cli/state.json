@@ -1,6 +1,6 @@
 {
   "feature": "09-cli",
-  "spec": "/Users/tercelyi/Workspace/aipartnerup/apcore-a2a/docs/features/09-cli.md",
+  "spec": "/Users/tercelyi/Workspace/aiperceivable/apcore-a2a/docs/features/09-cli.md",
   "status": "completed",
   "depends_on_features": ["08-public-api"],
   "target_files": [

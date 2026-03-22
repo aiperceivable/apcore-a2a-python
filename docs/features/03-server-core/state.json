@@ -1,6 +1,6 @@
 {
   "feature": "03-server-core",
-  "spec": "/Users/tercelyi/Workspace/aipartnerup/apcore-a2a/docs/features/03-server-core.md",
+  "spec": "/Users/tercelyi/Workspace/aiperceivable/apcore-a2a/docs/features/03-server-core.md",
   "status": "pending",
   "depends_on_features": ["01-adapters", "02-storage"],
   "target_files": [
