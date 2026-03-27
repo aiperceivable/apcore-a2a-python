@@ -113,12 +113,12 @@ def test_serve_zero_modules_exits_1(tmp_path, capsys):
 
 
 def test_serve_auth_bearer_missing_key_exits_1(tmp_path, capsys, monkeypatch):
-    """--auth-type bearer without --auth-key and no JWT_SECRET → exit 1."""
+    """--auth-type bearer without --auth-key and no APCORE_JWT_SECRET → exit 1."""
     ext_dir = tmp_path / "extensions"
     ext_dir.mkdir()
 
-    # Make sure JWT_SECRET is not set
-    monkeypatch.delenv("JWT_SECRET", raising=False)
+    # Make sure APCORE_JWT_SECRET is not set
+    monkeypatch.delenv("APCORE_JWT_SECRET", raising=False)
 
     args = Namespace(
         extensions_dir=str(ext_dir),
@@ -187,11 +187,11 @@ def test_serve_auth_bearer_with_key(tmp_path, monkeypatch):
 
 
 def test_serve_auth_bearer_with_jwt_secret_env(tmp_path, monkeypatch, capsys):
-    """JWT_SECRET env var used as fallback when --auth-key not provided."""
+    """APCORE_JWT_SECRET env var used as fallback when --auth-key not provided."""
     ext_dir = tmp_path / "extensions"
     ext_dir.mkdir()
 
-    monkeypatch.setenv("JWT_SECRET", "env_secret_key")
+    monkeypatch.setenv("APCORE_JWT_SECRET", "env_secret_key")
 
     args = Namespace(
         extensions_dir=str(ext_dir),
@@ -412,14 +412,14 @@ def test_resolve_auth_key_file(tmp_path):
 
 
 def test_resolve_auth_key_env_fallback(monkeypatch):
-    """auth_key=None, JWT_SECRET env var set → returns env var value."""
-    monkeypatch.setenv("JWT_SECRET", "env_secret")
+    """auth_key=None, APCORE_JWT_SECRET env var set → returns env var value."""
+    monkeypatch.setenv("APCORE_JWT_SECRET", "env_secret")
     result = _resolve_auth_key(None)
     assert result == "env_secret"
 
 
 def test_resolve_auth_key_none(monkeypatch):
-    """auth_key=None, no JWT_SECRET → returns None."""
-    monkeypatch.delenv("JWT_SECRET", raising=False)
+    """auth_key=None, no APCORE_JWT_SECRET → returns None."""
+    monkeypatch.delenv("APCORE_JWT_SECRET", raising=False)
     result = _resolve_auth_key(None)
     assert result is None

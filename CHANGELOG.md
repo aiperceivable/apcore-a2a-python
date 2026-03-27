@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-03-27
+
+### Added
+
+- **Display overlay in `SkillMapper`** (§5.13) — `to_skill()` reads `metadata["display"]["a2a"]` for skill name, description, tags, and guidance.
+  - Skill name: `a2a.alias` → `display.alias` → humanized `module_id`.
+  - Description: `a2a.description` → `display.description` → `module.description`. Guidance appended if present.
+  - Tags: `display.tags` → `module.tags`.
+
+### Changed
+
+- **`apcore` dependency** bumped from `>=0.9.0` to `>=0.14.0`.
+- **Environment variables** renamed with `APCORE_` prefix: `JWT_SECRET` → `APCORE_JWT_SECRET`, `A2A_EXECUTION_TIMEOUT` → `APCORE_A2A_EXECUTION_TIMEOUT`.
+
+### Removed
+
+- **`_build_extensions()` dead code** — `AgentSkill` has no `extensions` field in the A2A SDK; this method could never be wired in. Deleted along with its 3 tests.
+
+### Tests
+
+- 6 display overlay tests + 3 empty-string fallthrough tests for cross-language parity with TypeScript.
+- Removed 3 `test__build_extensions_*` tests (dead code).
+
+---
+
 ## [0.2.1] - 2026-03-22
 
 ### Changed
@@ -92,7 +117,7 @@ Initial release — automatic A2A protocol adapter for apcore Module Registry.
 #### CLI (`apcore_a2a.__main__`)
 - `apcore-a2a serve` command with full argument parsing
 - `--extensions-dir`, `--host`, `--port`, `--name`, `--description`, `--url`
-- `--auth-type bearer`, `--auth-key` (supports literal, file path, `JWT_SECRET` env fallback)
+- `--auth-type bearer`, `--auth-key` (supports literal, file path, `APCORE_JWT_SECRET` env fallback)
 - `--auth-issuer`, `--auth-audience`, `--push-notifications`, `--explorer`, `--cors-origins`
 - `--execution-timeout`, `--log-level`
 - `--version` flag

@@ -90,36 +90,34 @@ def test_humanize_single_word(mapper):
     assert skill.name == "Ping"
 
 
-# --- _build_extensions ---
+# --- Empty-string fallthrough (cross-language parity) ---
 
 
-def test_build_extensions_returns_none_when_annotations_none(mapper):
-    assert mapper._build_extensions(None) is None
+def test_empty_string_alias_falls_through(mapper):
+    desc = ModuleDescriptor(
+        module_id="image.resize",
+        description="Resize an image",
+        metadata={"display": {"a2a": {"alias": ""}, "alias": ""}},
+    )
+    skill = mapper.to_skill(desc)
+    assert skill.name == "Image Resize"
 
 
-def test_build_extensions_returns_apcore_dict(mapper):
-    class Annotations:
-        readonly = True
-        destructive = False
-        idempotent = True
-        requires_approval = False
-        open_world = False
-
-    result = mapper._build_extensions(Annotations())
-    assert result is not None
-    assert "apcore" in result
-    assert result["apcore"]["annotations"]["readonly"] is True
-    assert result["apcore"]["annotations"]["idempotent"] is True
-    assert result["apcore"]["annotations"]["open_world"] is False
+def test_empty_string_description_falls_through(mapper):
+    desc = ModuleDescriptor(
+        module_id="image.resize",
+        description="Resize an image",
+        metadata={"display": {"a2a": {"description": ""}, "description": ""}},
+    )
+    skill = mapper.to_skill(desc)
+    assert skill.description == "Resize an image"
 
 
-def test_build_extensions_defaults_missing_attrs(mapper):
-    class EmptyAnnotations:
-        pass
-
-    result = mapper._build_extensions(EmptyAnnotations())
-    assert result is not None
-    ann = result["apcore"]["annotations"]
-    assert ann["readonly"] is False
-    assert ann["destructive"] is False
-    assert ann["open_world"] is True  # default True
+def test_empty_string_guidance_not_appended(mapper):
+    desc = ModuleDescriptor(
+        module_id="image.resize",
+        description="Resize an image",
+        metadata={"display": {"a2a": {"guidance": ""}}},
+    )
+    skill = mapper.to_skill(desc)
+    assert skill.description == "Resize an image"

@@ -140,7 +140,7 @@ def _resolve_auth_key(auth_key: str | None) -> str | None:
     Priority:
     1. If auth_key is a path to an existing file → read file contents (strip whitespace)
     2. If auth_key is provided but not a file → use as literal key
-    3. If auth_key is None → check JWT_SECRET env var
+    3. If auth_key is None → check APCORE_JWT_SECRET env var
     4. Return None if nothing found
     """
     if auth_key:
@@ -148,7 +148,7 @@ def _resolve_auth_key(auth_key: str | None) -> str | None:
         if p.exists():
             return p.read_text().strip()
         return auth_key
-    return os.environ.get("JWT_SECRET")
+    return os.environ.get("APCORE_JWT_SECRET")
 
 
 if __name__ == "__main__":

@@ -23,7 +23,7 @@ It solves a common problem: **you've built AI capabilities with apcore modules, 
 
 - **One-call server** — launch a compliant A2A server with `serve(registry)`
 - **Automatic Agent Card** — `/.well-known/agent.json` generated from module metadata
-- **Skill mapping** — apcore modules become A2A Skills with names, descriptions, tags, and examples
+- **Skill mapping** — apcore modules become A2A Skills with names, descriptions, tags, and examples; `metadata["display"]["a2a"]` overrides surface-facing fields (§5.13)
 - **Full task lifecycle** — submitted, working, completed, failed, canceled, input-required
 - **SSE streaming** — `message/stream` with real-time status and artifact updates
 - **Push notifications** — optional webhook delivery of task state changes
@@ -37,7 +37,7 @@ It solves a common problem: **you've built AI capabilities with apcore modules, 
 ## Requirements
 
 - Python >= 3.11
-- `apcore` >= 0.9.0
+- `apcore` >= 0.14.0
 
 ---
 
@@ -191,7 +191,10 @@ apcore-a2a acts as a thin protocol layer on top of apcore. The mapping is straig
 | A2A Concept    | apcore Mapping                            |
 | -------------- | ----------------------------------------- |
 | **Agent Card** | Derived from Registry configuration       |
-| **Skill**      | Maps 1:1 to an apcore Module              |
+| **Skill id**   | `module_id`                               |
+| **Skill name** | `metadata["display"]["a2a"]["alias"]` or humanized `module_id` |
+| **Skill desc** | `metadata["display"]["a2a"]["description"]` or `module.description` |
+| **Skill tags** | `metadata["display"]["tags"]` or `module.tags` |
 | **Task**       | Managed execution of `Executor.call_async()` |
 | **Streaming**  | Wrapped `Executor.stream()` via SSE       |
 | **Security**   | Bridged to apcore's `Identity` context    |

@@ -23,11 +23,28 @@ class SkillMapper:
         if not description:
             return None
 
+        # Resolve display overlay fields (§5.13)
+        metadata = getattr(descriptor, "metadata", None) or {}
+        display = metadata.get("display") or {}
+        a2a_display = display.get("a2a") or {}
+
+        skill_name: str = (
+            a2a_display.get("alias") or display.get("alias") or self._humanize_module_id(descriptor.module_id)
+        )
+        skill_description: str = a2a_display.get("description") or display.get("description") or description
+
+        # Append guidance if present
+        guidance: str | None = a2a_display.get("guidance") or display.get("guidance")
+        if guidance:
+            skill_description = f"{skill_description}\n\nGuidance: {guidance}"
+
+        resolved_tags: list[str] = list(display.get("tags") or []) or list(getattr(descriptor, "tags", []) or [])
+
         return AgentSkill(
             id=descriptor.module_id,
-            name=self._humanize_module_id(descriptor.module_id),
-            description=description,
-            tags=list(getattr(descriptor, "tags", []) or []),
+            name=skill_name,
+            description=skill_description,
+            tags=resolved_tags,
             input_modes=self._compute_input_modes(descriptor),
             output_modes=self._compute_output_modes(descriptor),
             examples=self._build_examples(descriptor),
@@ -71,26 +88,3 @@ class SkillMapper:
             if title:
                 result.append(str(title))
         return result
-
-    def _build_extensions(self, annotations: Any) -> dict | None:
-        """Build apcore skill extensions dict from module annotations.
-
-        Returns a dict with apcore annotation flags, or None if annotations is None.
-
-        Structure:
-            {"apcore": {"annotations": {"readonly": bool, "destructive": bool,
-                        "idempotent": bool, "requires_approval": bool, "open_world": bool}}}
-        """
-        if annotations is None:
-            return None
-        return {
-            "apcore": {
-                "annotations": {
-                    "readonly": bool(getattr(annotations, "readonly", False)),
-                    "destructive": bool(getattr(annotations, "destructive", False)),
-                    "idempotent": bool(getattr(annotations, "idempotent", False)),
-                    "requires_approval": bool(getattr(annotations, "requires_approval", False)),
-                    "open_world": bool(getattr(annotations, "open_world", True)),
-                }
-            }
-        }
