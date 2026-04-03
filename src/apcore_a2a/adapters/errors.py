@@ -23,6 +23,18 @@ class ErrorMapper:
     file paths, caller identity, or stack traces to the caller.
     """
 
+    def format(self, error: Exception, context: object = None) -> dict[str, Any]:
+        """ErrorFormatter protocol implementation for apcore ErrorFormatterRegistry.
+
+        Args:
+            error: The error to format.
+            context: Optional context (unused, present for protocol compliance).
+
+        Returns:
+            Dict with "code" (int) and "message" (str) keys.
+        """
+        return self.to_jsonrpc_error(error)
+
     def to_jsonrpc_error(self, error: Exception) -> dict[str, Any]:
         """Convert an exception to an A2A JSON-RPC error dict.
 
@@ -80,6 +92,12 @@ class ErrorMapper:
             "CALL_FREQUENCY_EXCEEDED",
         ):
             return {"code": _CODE_INTERNAL_ERROR, "message": "Safety limit exceeded"}
+
+        if error_code == "MODULE_DISABLED":
+            return {"code": _CODE_INTERNAL_ERROR, "message": "Module is currently disabled"}
+
+        if error_code in ("CONFIG_NAMESPACE_DUPLICATE", "CONFIG_MOUNT_ERROR", "CONFIG_BIND_ERROR"):
+            return {"code": _CODE_INTERNAL_ERROR, "message": "Configuration error"}
 
         if error_code == "INVALID_INPUT":
             description = self._sanitize_message(getattr(error, "message", str(error)))

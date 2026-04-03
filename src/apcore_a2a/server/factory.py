@@ -17,6 +17,7 @@ from a2a.server.tasks.inmemory_push_notification_config_store import (
 )
 from a2a.server.tasks.inmemory_task_store import InMemoryTaskStore as A2ATaskStore
 from a2a.types import AgentCapabilities, AgentCard
+from apcore.error_formatter import ErrorFormatterRegistry
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -25,6 +26,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from apcore_a2a._config import register_a2a_namespace
 from apcore_a2a.adapters.agent_card import AgentCardBuilder
 from apcore_a2a.adapters.errors import ErrorMapper
 from apcore_a2a.adapters.parts import PartConverter
@@ -150,6 +152,14 @@ class A2AServerFactory:
         self._error_mapper = ErrorMapper()
         self._part_converter = PartConverter(self._schema_converter)
 
+        # apcore 0.15.0: register config namespace and error formatter
+        register_a2a_namespace()
+        try:
+            ErrorFormatterRegistry.register("a2a", self._error_mapper)
+        except Exception:
+            # Already registered (e.g. multiple factory instances in tests)
+            logger.debug("Error formatter 'a2a' already registered")
+
     def create(
         self,
         registry: Any,
@@ -258,7 +268,7 @@ class A2AServerFactory:
         _snap_security_schemes = security_schemes
         _snap_builder = self._agent_card_builder
 
-        def _card_modifier(card: AgentCard) -> AgentCard:
+        def _card_modifier(_card: AgentCard) -> AgentCard:
             return _snap_builder.get_cached_or_build(
                 registry=_snap_registry,
                 name=_snap_name,

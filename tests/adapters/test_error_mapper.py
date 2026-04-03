@@ -63,6 +63,49 @@ def test_result_has_code_and_message(mapper):
     assert "message" in result
 
 
+def test_module_disabled_error(mapper):
+    err = FakeApCoreError("MODULE_DISABLED", "Module foo is disabled")
+    result = mapper.to_jsonrpc_error(err)
+    assert result["code"] == -32603
+    assert result["message"] == "Module is currently disabled"
+
+
+def test_config_namespace_duplicate_error(mapper):
+    err = FakeApCoreError("CONFIG_NAMESPACE_DUPLICATE", "Namespace already registered")
+    result = mapper.to_jsonrpc_error(err)
+    assert result["code"] == -32603
+    assert result["message"] == "Configuration error"
+
+
+def test_config_mount_error(mapper):
+    err = FakeApCoreError("CONFIG_MOUNT_ERROR", "Mount failed")
+    result = mapper.to_jsonrpc_error(err)
+    assert result["code"] == -32603
+    assert result["message"] == "Configuration error"
+
+
+def test_config_bind_error(mapper):
+    err = FakeApCoreError("CONFIG_BIND_ERROR", "Bind failed")
+    result = mapper.to_jsonrpc_error(err)
+    assert result["code"] == -32603
+    assert result["message"] == "Configuration error"
+
+
+def test_format_delegates_to_to_jsonrpc_error(mapper):
+    """format() method delegates to to_jsonrpc_error() for ErrorFormatter protocol."""
+    err = FakeApCoreError("MODULE_NOT_FOUND", "Module not found: foo")
+    result = mapper.format(err)
+    assert result["code"] == -32601
+    assert result == mapper.to_jsonrpc_error(err)
+
+
+def test_format_accepts_context_param(mapper):
+    """format() accepts an optional context parameter."""
+    err = ValueError("test")
+    result = mapper.format(err, context={"some": "context"})
+    assert result["code"] == -32603
+
+
 def test_sanitize_message_strips_paths(mapper):
     result = mapper._sanitize_message("Error at /usr/local/lib/python3.12/something.py")
     assert "/usr/local/lib/python3.12/something.py" not in result

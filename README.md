@@ -17,7 +17,7 @@ It solves a common problem: **you've built AI capabilities with apcore modules, 
 
 **In short:** `apcore modules` + `apcore-a2a` = a fully functional A2A agent, ready to be discovered and invoked by any A2A-compatible client.
 
-> **Also available in TypeScript:** [`apcore-a2a` (npm)](https://github.com/aiperceivable/apcore-a2a-typescript)
+> **Also available in:** [TypeScript](https://github.com/aiperceivable/apcore-a2a-typescript) | [Rust](https://github.com/aiperceivable/apcore-a2a-rust)
 
 ## Features
 
@@ -37,7 +37,7 @@ It solves a common problem: **you've built AI capabilities with apcore modules, 
 ## Requirements
 
 - Python >= 3.11
-- `apcore` >= 0.14.0
+- `apcore` >= 0.15.1
 
 ---
 

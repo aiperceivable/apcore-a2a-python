@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-03-31
+
+### Added
+
+- **Error Formatter Registry** (§8.8) — `ErrorMapper` now implements the `ErrorFormatter` protocol and registers with `ErrorFormatterRegistry.register("a2a", ...)` during factory initialization, making the A2A error formatter discoverable by the ecosystem.
+- **Config Bus namespace** (§9.13) — new `_config.py` module registers the `apcore-a2a` namespace with env prefix `APCORE_A2A` and defaults for `execution_timeout`, `cors_origins`, `explorer`, `metrics`, `push_notifications`.
+- **New error codes** in `ErrorMapper` — `MODULE_DISABLED` (→ "Module is currently disabled"), `CONFIG_NAMESPACE_DUPLICATE`, `CONFIG_MOUNT_ERROR`, `CONFIG_BIND_ERROR` (→ "Configuration error").
+- **`format()` method** on `ErrorMapper` — implements the `ErrorFormatter` protocol, delegating to `to_jsonrpc_error()`.
+- 6 new tests for new error codes and `format()` method.
+
+### Changed
+
+- **`apcore` dependency** bumped from `>=0.14.0` to `>=0.15.1`.
+- **Env prefix** — `APCORE__A2A` (double underscore) → `APCORE_A2A` (single underscore), per apcore 0.15.1 convention simplification.
+
+---
+
 ## [0.3.0] - 2026-03-27
 
 ### Added
