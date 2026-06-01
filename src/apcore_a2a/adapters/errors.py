@@ -7,6 +7,8 @@ import logging
 import re
 from typing import Any
 
+from apcore.errors import ErrorCodes
+
 logger = logging.getLogger(__name__)
 
 # JSON-RPC error codes
@@ -70,38 +72,48 @@ class ErrorMapper:
         Returns:
             JSON-RPC error dict.
         """
-        if error_code == "MODULE_NOT_FOUND":
+        if error_code == ErrorCodes.MODULE_NOT_FOUND:
             # Extract module ID from message if possible
             message = self._sanitize_message(getattr(error, "message", str(error)))
             return {"code": _CODE_METHOD_NOT_FOUND, "message": message}
 
-        if error_code == "SCHEMA_VALIDATION_ERROR":
+        if error_code == ErrorCodes.SCHEMA_VALIDATION_ERROR:
             message = self._sanitize_message(getattr(error, "message", str(error)))
             return {"code": _CODE_INVALID_PARAMS, "message": message}
 
-        if error_code == "ACL_DENIED":
+        if error_code == ErrorCodes.GENERAL_INVALID_INPUT:
+            description = self._sanitize_message(getattr(error, "message", str(error)))
+            return {"code": _CODE_INVALID_PARAMS, "message": f"Invalid input: {description}"}
+
+        if error_code == ErrorCodes.ACL_DENIED:
             # Mask: don't reveal that the resource exists, user identity, etc.
             return {"code": _CODE_TASK_NOT_FOUND, "message": "Task not found"}
 
-        if error_code in ("MODULE_TIMEOUT", "EXECUTION_TIMEOUT"):
+        if error_code == ErrorCodes.MODULE_TIMEOUT:
             return {"code": _CODE_INTERNAL_ERROR, "message": "Execution timeout"}
 
+        if error_code == ErrorCodes.EXECUTION_CANCELLED:
+            return {"code": _CODE_INTERNAL_ERROR, "message": "Execution cancelled"}
+
         if error_code in (
-            "CALL_DEPTH_EXCEEDED",
-            "CIRCULAR_CALL",
-            "CALL_FREQUENCY_EXCEEDED",
+            ErrorCodes.CALL_DEPTH_EXCEEDED,
+            ErrorCodes.CIRCULAR_CALL,
+            ErrorCodes.CALL_FREQUENCY_EXCEEDED,
         ):
             return {"code": _CODE_INTERNAL_ERROR, "message": "Safety limit exceeded"}
 
-        if error_code == "MODULE_DISABLED":
+        if error_code in (ErrorCodes.CIRCUIT_BREAKER_OPEN, ErrorCodes.TASK_LIMIT_EXCEEDED):
+            return {"code": _CODE_INTERNAL_ERROR, "message": "Service temporarily unavailable"}
+
+        if error_code == ErrorCodes.MODULE_DISABLED:
             return {"code": _CODE_INTERNAL_ERROR, "message": "Module is currently disabled"}
 
-        if error_code in ("CONFIG_NAMESPACE_DUPLICATE", "CONFIG_MOUNT_ERROR", "CONFIG_BIND_ERROR"):
+        if error_code in (
+            ErrorCodes.CONFIG_NAMESPACE_DUPLICATE,
+            ErrorCodes.CONFIG_MOUNT_ERROR,
+            ErrorCodes.CONFIG_BIND_ERROR,
+        ):
             return {"code": _CODE_INTERNAL_ERROR, "message": "Configuration error"}
-
-        if error_code == "INVALID_INPUT":
-            description = self._sanitize_message(getattr(error, "message", str(error)))
-            return {"code": _CODE_INVALID_PARAMS, "message": f"Invalid input: {description}"}
 
         # Unknown apcore error code
         return {"code": _CODE_INTERNAL_ERROR, "message": "Internal server error"}
@@ -112,5 +124,6 @@ class ErrorMapper:
         message = re.sub(r"~?/[^\s]*", "", message)
         # Strip traceback lines
         message = re.sub(r"(?m)^.*(?:Traceback|File \"|line \d+).*$", "", message)
-        message = message.strip()
+        # Collapse internal whitespace (kept in sync with the TypeScript binding)
+        message = re.sub(r"\s+", " ", message).strip()
         return message[:500]

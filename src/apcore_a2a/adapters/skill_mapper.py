@@ -6,9 +6,16 @@ from typing import Any
 
 from a2a.types import AgentSkill
 
+from apcore_a2a.adapters.schema import SchemaConverter
+
 
 class SkillMapper:
     """Converts apcore ModuleDescriptor to a2a.types.AgentSkill."""
+
+    def __init__(self, schema_converter: SchemaConverter | None = None) -> None:
+        # Share root-type detection with SchemaConverter so the "string root"
+        # rule lives in exactly one place.
+        self._schema_converter = schema_converter or SchemaConverter()
 
     def to_skill(self, descriptor: Any) -> AgentSkill | None:
         """Convert a ModuleDescriptor to an a2a.types.AgentSkill.
@@ -66,8 +73,7 @@ class SkillMapper:
         if not schema:
             return ["text/plain"]
 
-        root_type = schema.get("type")
-        if root_type == "string":
+        if self._schema_converter.detect_root_type(schema) == "string":
             return ["application/json", "text/plain"]
 
         return ["application/json"]

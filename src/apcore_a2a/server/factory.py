@@ -39,7 +39,15 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class _MetricsState:
-    """Simple in-process metrics counters."""
+    """Simple in-process counters for the A2A ``/metrics`` endpoint.
+
+    These count A2A *task-state transitions* (submitted/working/completed/...)
+    on the wire protocol, which is a distinct concern from apcore's per-module
+    observability metrics (latency, error rates) collected via
+    ``ObsLoggingMiddleware`` / ``ErrorHistoryMiddleware``. The two are
+    intentionally separate: this surfaces A2A protocol state, apcore surfaces
+    module-execution telemetry.
+    """
 
     active_tasks: int = 0
     completed_tasks: int = 0
@@ -147,8 +155,8 @@ class _RequestCountMiddleware(BaseHTTPMiddleware):
 
 class A2AServerFactory:
     def __init__(self) -> None:
-        self._skill_mapper = SkillMapper()
         self._schema_converter = SchemaConverter()
+        self._skill_mapper = SkillMapper(self._schema_converter)
         self._agent_card_builder = AgentCardBuilder(self._skill_mapper)
         self._error_mapper = ErrorMapper()
         self._part_converter = PartConverter(self._schema_converter)

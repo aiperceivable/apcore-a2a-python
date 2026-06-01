@@ -58,12 +58,13 @@ def test_error_mapper_module_timeout():
     assert "timeout" in result["message"].lower()
 
 
-def test_error_mapper_execution_timeout_code():
+def test_error_mapper_execution_cancelled_code():
     from apcore_a2a.adapters.errors import ErrorMapper
 
     mapper = ErrorMapper()
-    result = mapper.to_jsonrpc_error(_ApCoreError("EXECUTION_TIMEOUT", "execution timeout"))
+    result = mapper.to_jsonrpc_error(_ApCoreError("EXECUTION_CANCELLED", "execution cancelled"))
     assert result["code"] == -32603
+    assert "cancel" in result["message"].lower()
 
 
 def test_error_mapper_call_depth_exceeded():
@@ -79,7 +80,7 @@ def test_error_mapper_invalid_input():
     from apcore_a2a.adapters.errors import ErrorMapper
 
     mapper = ErrorMapper()
-    result = mapper.to_jsonrpc_error(_ApCoreError("INVALID_INPUT", "bad schema"))
+    result = mapper.to_jsonrpc_error(_ApCoreError("GENERAL_INVALID_INPUT", "bad schema"))
     assert result["code"] == -32602
     assert "Invalid input" in result["message"]
 

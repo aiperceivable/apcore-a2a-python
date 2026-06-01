@@ -4,17 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
 from a2a.server.tasks.inmemory_task_store import InMemoryTaskStore
 from starlette.applications import Starlette
 
+from apcore_a2a._config import resolve_execution_timeout
 from apcore_a2a.server.factory import A2AServerFactory
-
-# CFG1: allow execution_timeout to be configured via environment variable
-_DEFAULT_EXECUTION_TIMEOUT = int(os.environ.get("APCORE_A2A_EXECUTION_TIMEOUT", "300"))
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +93,7 @@ async def async_serve(
     explorer: bool = False,
     explorer_prefix: str = "/explorer",
     cancel_on_disconnect: bool = True,
-    execution_timeout: int = _DEFAULT_EXECUTION_TIMEOUT,
+    execution_timeout: int | None = None,
     metrics: bool = False,
     sys_modules: bool = False,
 ) -> Starlette:
@@ -120,8 +117,9 @@ async def async_serve(
         explorer_prefix: URL prefix for the explorer (default "/explorer").
         cancel_on_disconnect: Deprecated. Has no effect; DefaultRequestHandler
             does not support disabling cancel-on-disconnect.
-        execution_timeout: Task execution timeout in seconds. Can also be set
-            via the APCORE_A2A_EXECUTION_TIMEOUT environment variable.
+        execution_timeout: Task execution timeout in seconds. When omitted,
+            resolved via apcore Config (apcore-a2a.execution_timeout, including
+            the APCORE_A2A_EXECUTION_TIMEOUT environment override).
 
     Returns:
         A configured Starlette ASGI application.
@@ -132,6 +130,9 @@ async def async_serve(
             missing required protocol methods.
         ValueError: If the registry contains zero modules.
     """
+    # Step 0: Resolve execution timeout via apcore Config (namespace + env)
+    execution_timeout = resolve_execution_timeout(execution_timeout)
+
     # Step 1: Resolve registry and executor
     registry, executor = _resolve_registry_and_executor(registry_or_executor)
 
@@ -205,7 +206,7 @@ def serve(
     explorer_prefix: str = "/explorer",
     cancel_on_disconnect: bool = True,
     shutdown_timeout: int = 30,
-    execution_timeout: int = _DEFAULT_EXECUTION_TIMEOUT,
+    execution_timeout: int | None = None,
     log_level: str | None = None,
     metrics: bool = False,
     sys_modules: bool = False,
@@ -232,8 +233,9 @@ def serve(
         explorer_prefix: URL prefix for explorer.
         cancel_on_disconnect: Deprecated. Has no effect.
         shutdown_timeout: Graceful shutdown timeout in seconds.
-        execution_timeout: Task execution timeout in seconds. Can also be set
-            via the APCORE_A2A_EXECUTION_TIMEOUT environment variable.
+        execution_timeout: Task execution timeout in seconds. When omitted,
+            resolved via apcore Config (apcore-a2a.execution_timeout, including
+            the APCORE_A2A_EXECUTION_TIMEOUT environment override).
         log_level: Optional log level string (e.g. "info", "debug").
 
     Raises:

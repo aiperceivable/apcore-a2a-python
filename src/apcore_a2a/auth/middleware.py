@@ -50,7 +50,14 @@ class AuthMiddleware:
         self._app = app
         self._authenticator = authenticator
         self._exempt_paths = (
-            exempt_paths if exempt_paths is not None else {"/.well-known/agent.json", "/health", "/metrics"}
+            exempt_paths
+            if exempt_paths is not None
+            else {
+                "/.well-known/agent-card.json",  # A2A 1.0 canonical card path
+                "/.well-known/agent.json",  # legacy 0.3.x path
+                "/health",
+                "/metrics",
+            }
         )
         self._exempt_prefixes = exempt_prefixes or set()
         self._require_auth = require_auth
