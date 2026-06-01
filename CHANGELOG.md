@@ -5,7 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.0] - 2026-03-31
+## [0.4.0] - 2026-06-01
+
+### Changed
+
+- **A2A protocol upgraded 0.3 → 1.0 (BREAKING)** — migrated to `a2a-sdk >= 1.0.0` (protobuf-based `a2a.types.a2a_pb2`):
+  - All types are protobuf: `Part(text=…)` / inspection via `part.WhichOneof("content")`; `TaskState.TASK_STATE_*` and `Role.ROLE_*` enum values; `TaskStatus.timestamp` is a protobuf `Timestamp`.
+  - Events lost the `final` flag and the 0.3 `type`/`kind` discriminator; the executor emits a `Task` event before any `TaskStatusUpdateEvent` (a2a-sdk 1.0 requirement).
+  - `AgentCard`: `url` → `supported_interfaces` (`AgentInterface(url, protocol_binding="JSONRPC", protocol_version="1.0")`); `capabilities` gains `extended_agent_card`; security via the proto `security_schemes` map.
+  - Agent Card served at `/.well-known/agent-card.json` (+ `/.well-known/agent.json` 0.3 alias); JSON-RPC routes use `enable_v0_3_compat=True`.
+- **`apcore` dependency** bumped to `>=0.22.0`; **added `apcore-toolkit >=0.8.0`** (schema `$ref` resolution via `deep_resolve_refs`).
+- **New apcore 0.22 capabilities wired** — real streaming via `Executor.stream()`, cooperative cancellation via `CancelToken`, `global_deadline` (from `execution_timeout`), `ObsLoggingMiddleware`, and `register_sys_modules` (new `sys_modules` option on `serve()` / `async_serve()`).
+- **Env prefix** — `APCORE__A2A` (double underscore) → `APCORE_A2A` (single underscore).
 
 ### Added
 
@@ -13,12 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Config Bus namespace** (§9.13) — new `_config.py` module registers the `apcore-a2a` namespace with env prefix `APCORE_A2A` and defaults for `execution_timeout`, `cors_origins`, `explorer`, `metrics`, `push_notifications`.
 - **New error codes** in `ErrorMapper` — `MODULE_DISABLED` (→ "Module is currently disabled"), `CONFIG_NAMESPACE_DUPLICATE`, `CONFIG_MOUNT_ERROR`, `CONFIG_BIND_ERROR` (→ "Configuration error").
 - **`format()` method** on `ErrorMapper` — implements the `ErrorFormatter` protocol, delegating to `to_jsonrpc_error()`.
-- 6 new tests for new error codes and `format()` method.
-
-### Changed
-
-- **`apcore` dependency** bumped from `>=0.14.0` to `>=0.15.1`.
-- **Env prefix** — `APCORE__A2A` (double underscore) → `APCORE_A2A` (single underscore), per apcore 0.15.1 convention simplification.
+- A2A 1.0 migration covered by the full suite — **282 tests passing**.
 
 ---
 

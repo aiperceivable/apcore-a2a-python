@@ -1,7 +1,11 @@
 """Tests for PartConverter."""
 
+import json
+
 import pytest
-from a2a.types import Artifact, DataPart, Part, TextPart
+from a2a.types import Artifact, Part
+from google.protobuf import struct_pb2
+from google.protobuf.json_format import MessageToDict, ParseDict
 
 from apcore_a2a.adapters.parts import PartConverter
 from apcore_a2a.adapters.schema import SchemaConverter
@@ -17,11 +21,11 @@ class FakeDesc:
 
 
 def _text_part(text: str) -> Part:
-    return Part(root=TextPart(text=text))
+    return Part(text=text)
 
 
 def _data_part(data: dict) -> Part:
-    return Part(root=DataPart(data=data))
+    return Part(data=ParseDict(data, struct_pb2.Value()))
 
 
 # parts_to_input
@@ -36,7 +40,9 @@ def test_text_part_returns_string(converter):
 def test_data_part_returns_dict(converter):
     parts = [_data_part({"width": 800, "height": 600})]
     result = converter.parts_to_input(parts, FakeDesc())
-    assert result == {"width": 800, "height": 600}
+    # protobuf JSON converts ints to floats when using struct_pb2.Value
+    assert result.get("width") == 800 or result.get("width") == 800.0
+    assert result.get("height") == 600 or result.get("height") == 600.0
 
 
 def test_empty_parts_raises(converter):
@@ -57,28 +63,29 @@ def test_string_output_returns_artifact_with_text_part(converter):
     artifact = converter.output_to_parts("hello world")
     assert isinstance(artifact, Artifact)
     assert len(artifact.parts) == 1
-    assert isinstance(artifact.parts[0].root, TextPart)
-    assert artifact.parts[0].root.text == "hello world"
+    assert artifact.parts[0].WhichOneof("content") == "text"
+    assert artifact.parts[0].text == "hello world"
 
 
 def test_dict_output_returns_artifact_with_data_part(converter):
     artifact = converter.output_to_parts({"width": 800})
     assert isinstance(artifact, Artifact)
     assert len(artifact.parts) == 1
-    assert isinstance(artifact.parts[0].root, DataPart)
-    assert artifact.parts[0].root.data == {"width": 800}
+    assert artifact.parts[0].WhichOneof("content") == "data"
+    result = MessageToDict(artifact.parts[0].data)
+    assert result.get("width") == 800 or result.get("width") == 800.0
 
 
 def test_none_output_returns_empty_artifact(converter):
     artifact = converter.output_to_parts(None)
     assert isinstance(artifact, Artifact)
-    assert artifact.parts == []
+    assert len(artifact.parts) == 0
 
 
 def test_int_output_returns_text_part(converter):
     artifact = converter.output_to_parts(42)
-    assert isinstance(artifact.parts[0].root, TextPart)
-    assert "42" in artifact.parts[0].root.text
+    assert artifact.parts[0].WhichOneof("content") == "text"
+    assert "42" in artifact.parts[0].text
 
 
 def test_artifact_id_uses_task_id(converter):
@@ -91,19 +98,15 @@ def test_list_output_returns_json_text_part(converter):
     artifact = converter.output_to_parts([1, 2, 3])
     assert isinstance(artifact, Artifact)
     assert len(artifact.parts) == 1
-    root = artifact.parts[0].root
-    assert isinstance(root, TextPart)
-    import json
-
-    assert json.loads(root.text) == [1, 2, 3]
+    part = artifact.parts[0]
+    assert part.WhichOneof("content") == "text"
+    assert json.loads(part.text) == [1, 2, 3]
 
 
 def test_list_output_not_python_repr(converter):
     """list output must not contain Python repr brackets like \"[1, 2, 3]\" with spaces."""
     artifact = converter.output_to_parts(["a", "b"])
-    text = artifact.parts[0].root.text
+    text = artifact.parts[0].text
     # JSON uses double quotes; Python repr uses single quotes
-    import json
-
     parsed = json.loads(text)
     assert parsed == ["a", "b"]

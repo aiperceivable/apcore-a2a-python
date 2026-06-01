@@ -274,7 +274,8 @@ async def test_async_serve_url_default():
     resp = client.get("/.well-known/agent.json")
     assert resp.status_code == 200
     card = resp.json()
-    assert card["url"] == "http://localhost:8000"
+    # A2A 1.0: url is in supportedInterfaces, not top-level
+    assert card["supportedInterfaces"][0]["url"] == "http://localhost:8000"
 
 
 async def test_async_serve_url_kwarg():
@@ -289,7 +290,8 @@ async def test_async_serve_url_kwarg():
     resp = client.get("/.well-known/agent.json")
     assert resp.status_code == 200
     card = resp.json()
-    assert card["url"] == "https://myagent.example.com"
+    # A2A 1.0: url is in supportedInterfaces, not top-level
+    assert card["supportedInterfaces"][0]["url"] == "https://myagent.example.com"
 
 
 async def test_async_serve_with_auth():

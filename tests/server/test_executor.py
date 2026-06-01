@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from a2a.server.events import EventQueue
 from a2a.server.events.in_memory_queue_manager import InMemoryQueueManager
-from a2a.types import Message, Part, Role, TaskState, TextPart
+from a2a.types import Message, Part, Role, TaskState
 
 from apcore_a2a.adapters.errors import ErrorMapper
 from apcore_a2a.adapters.parts import PartConverter
@@ -24,12 +24,13 @@ def _make_context(skill_id: str = "image.resize", text: str = "hello", task_id: 
     ctx = MagicMock()
     ctx.task_id = task_id
     ctx.context_id = "ctx-1"
-    ctx.message = Message(
-        role=Role.user,
-        parts=[Part(root=TextPart(text=text))],
+    msg = Message(
+        role=Role.ROLE_USER,
+        parts=[Part(text=text)],
         message_id="msg-1",
-        metadata={"skillId": skill_id},
     )
+    msg.metadata.update({"skillId": skill_id})
+    ctx.message = msg
     return ctx
 
 
@@ -102,7 +103,7 @@ async def test_execute_happy_path_enqueues_artifact_and_completed(apcore_executo
     assert "TaskStatusUpdateEvent" in kinds
 
     status_events = [e for e in events if hasattr(e, "status")]
-    assert any(e.status.state == TaskState.completed for e in status_events)
+    assert any(e.status.state == TaskState.TASK_STATE_COMPLETED for e in status_events)
 
 
 async def test_execute_missing_skill_id_enqueues_failed(apcore_executor):
@@ -110,21 +111,23 @@ async def test_execute_missing_skill_id_enqueues_failed(apcore_executor):
     ctx = MagicMock()
     ctx.task_id = "task-1"
     ctx.context_id = "ctx-1"
-    ctx.message = Message(
-        role=Role.user,
-        parts=[Part(root=TextPart(text="hi"))],
+    msg = Message(
+        role=Role.ROLE_USER,
+        parts=[Part(text="hi")],
         message_id="msg-1",
-        metadata={},
     )
+    ctx.message = msg
     queue = await _make_queue()
 
     await apcore_executor.execute(ctx, queue)
 
     events = await _drain_queue(queue)
     status_events = [e for e in events if hasattr(e, "status")]
-    assert any(e.status.state == TaskState.failed for e in status_events)
-    msg = status_events[0].status.message.parts[0].root.text
-    assert "skillId" in msg
+    assert any(e.status.state == TaskState.TASK_STATE_FAILED for e in status_events)
+    # Find the specific failed event (first event is now initial Task with SUBMITTED state)
+    failed_events = [e for e in status_events if e.status.state == TaskState.TASK_STATE_FAILED]
+    msg_text = failed_events[0].status.message.parts[0].text
+    assert "skillId" in msg_text
 
 
 async def test_execute_unknown_skill_enqueues_failed(apcore_executor):
@@ -136,7 +139,7 @@ async def test_execute_unknown_skill_enqueues_failed(apcore_executor):
 
     events = await _drain_queue(queue)
     status_events = [e for e in events if hasattr(e, "status")]
-    assert any(e.status.state == TaskState.failed for e in status_events)
+    assert any(e.status.state == TaskState.TASK_STATE_FAILED for e in status_events)
 
 
 async def test_execute_timeout_enqueues_failed(apcore_executor, mock_executor):
@@ -149,7 +152,7 @@ async def test_execute_timeout_enqueues_failed(apcore_executor, mock_executor):
 
     events = await _drain_queue(queue)
     status_events = [e for e in events if hasattr(e, "status")]
-    assert any(e.status.state == TaskState.failed for e in status_events)
+    assert any(e.status.state == TaskState.TASK_STATE_FAILED for e in status_events)
 
 
 async def test_execute_approval_pending_enqueues_input_required(apcore_executor, mock_executor):
@@ -166,7 +169,7 @@ async def test_execute_approval_pending_enqueues_input_required(apcore_executor,
 
     events = await _drain_queue(queue)
     status_events = [e for e in events if hasattr(e, "status")]
-    assert any(e.status.state == TaskState.input_required for e in status_events)
+    assert any(e.status.state == TaskState.TASK_STATE_INPUT_REQUIRED for e in status_events)
 
 
 async def test_execute_generic_exception_enqueues_failed(apcore_executor, mock_executor):
@@ -179,10 +182,12 @@ async def test_execute_generic_exception_enqueues_failed(apcore_executor, mock_e
 
     events = await _drain_queue(queue)
     status_events = [e for e in events if hasattr(e, "status")]
-    assert any(e.status.state == TaskState.failed for e in status_events)
+    assert any(e.status.state == TaskState.TASK_STATE_FAILED for e in status_events)
     # Error message must not leak internal details
-    msg = status_events[0].status.message.parts[0].root.text
-    assert "secret" not in msg.lower()
+    # Find the specific failed event (first event is now initial Task with SUBMITTED state)
+    failed_events = [e for e in status_events if e.status.state == TaskState.TASK_STATE_FAILED]
+    msg_text = failed_events[0].status.message.parts[0].text
+    assert "secret" not in msg_text.lower()
 
 
 async def test_cancel_enqueues_canceled(apcore_executor):
@@ -194,7 +199,7 @@ async def test_cancel_enqueues_canceled(apcore_executor):
 
     events = await _drain_queue(queue)
     status_events = [e for e in events if hasattr(e, "status")]
-    assert any(e.status.state == TaskState.canceled for e in status_events)
+    assert any(e.status.state == TaskState.TASK_STATE_CANCELED for e in status_events)
 
 
 # ---------------------------------------------------------------------------
@@ -236,12 +241,12 @@ async def test_on_state_change_called_on_missing_skill_id(mock_executor, mock_re
     ctx = MagicMock()
     ctx.task_id = "task-1"
     ctx.context_id = "ctx-1"
-    ctx.message = Message(
-        role=Role.user,
-        parts=[Part(root=TextPart(text="hi"))],
+    msg = Message(
+        role=Role.ROLE_USER,
+        parts=[Part(text="hi")],
         message_id="msg-1",
-        metadata={},
     )
+    ctx.message = msg
     queue = await _make_queue()
 
     await executor.execute(ctx, queue)

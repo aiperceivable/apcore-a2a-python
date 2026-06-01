@@ -28,10 +28,15 @@ def create_explorer_mount(
         return HTMLResponse(html_path.read_text())
 
     async def serve_agent_card(request):
-        # agent_card may be a Pydantic model (a2a.types.AgentCard); serialize it
-        data = (
-            agent_card.model_dump(mode="json", exclude_none=True) if hasattr(agent_card, "model_dump") else agent_card
-        )
+        # a2a-sdk 1.0: AgentCard is a protobuf message; convert to JSON-safe dict
+        from google.protobuf.json_format import MessageToDict
+
+        if hasattr(agent_card, "DESCRIPTOR"):
+            data: dict = MessageToDict(agent_card, preserving_proto_field_name=False)
+        elif hasattr(agent_card, "model_dump"):
+            data = agent_card.model_dump(mode="json", exclude_none=True)
+        else:
+            data = dict(agent_card)
         # Attach input schemas for the explorer UI to generate sample inputs
         if registry is not None:
             schemas = {}

@@ -149,7 +149,9 @@ class TestExplorerAgentCard:
         assert "version" in client.get("/explorer/agent-card").json()
 
     def test_card_has_url(self, client):
-        assert client.get("/explorer/agent-card").json()["url"].startswith("http")
+        # A2A 1.0: url is in supportedInterfaces, not top-level
+        card = client.get("/explorer/agent-card").json()
+        assert card["supportedInterfaces"][0]["url"].startswith("http")
 
     def test_card_has_capabilities(self, client):
         caps = client.get("/explorer/agent-card").json()["capabilities"]

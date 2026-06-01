@@ -98,6 +98,7 @@ async def async_serve(
     cancel_on_disconnect: bool = True,
     execution_timeout: int = _DEFAULT_EXECUTION_TIMEOUT,
     metrics: bool = False,
+    sys_modules: bool = False,
 ) -> Starlette:
     """Build and return a Starlette ASGI app for an A2A agent.
 
@@ -180,6 +181,7 @@ async def async_serve(
         explorer=explorer,
         explorer_prefix=explorer_prefix,
         metrics=metrics,
+        sys_modules=sys_modules,
     )
 
     # Step 7: Return the Starlette app
@@ -206,6 +208,7 @@ def serve(
     execution_timeout: int = _DEFAULT_EXECUTION_TIMEOUT,
     log_level: str | None = None,
     metrics: bool = False,
+    sys_modules: bool = False,
 ) -> None:
     """Launch an A2A agent server (blocking).
 
@@ -263,6 +266,7 @@ def serve(
             cancel_on_disconnect=cancel_on_disconnect,
             execution_timeout=execution_timeout,
             metrics=metrics,
+            sys_modules=sys_modules,
         )
         config = uvicorn.Config(
             app,

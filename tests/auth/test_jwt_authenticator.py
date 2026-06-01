@@ -168,11 +168,11 @@ def test_security_schemes_compatible_with_agent_card():
         description="Test",
         version="1.0",
         url="http://localhost",
-        capabilities=AgentCapabilities(streaming=False, push_notifications=False, state_transition_history=False),
+        capabilities=AgentCapabilities(streaming=False, push_notifications=False),
         security_schemes=schemes,
     )
-    assert card.security_schemes is not None
-    assert card.supports_authenticated_extended_card is True
+    # In a2a-sdk 1.0, security_schemes is a proto map — non-empty when set
+    assert "bearerAuth" in card.security_schemes
 
 
 # Protocol

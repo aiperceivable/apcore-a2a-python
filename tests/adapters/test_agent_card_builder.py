@@ -16,7 +16,8 @@ def builder():
 
 @pytest.fixture
 def capabilities():
-    return AgentCapabilities(streaming=False, push_notifications=False, state_transition_history=True)
+    # a2a-sdk 1.0: no state_transition_history field
+    return AgentCapabilities(streaming=False, push_notifications=False)
 
 
 @pytest.fixture
@@ -51,7 +52,8 @@ def test_build_has_required_fields(builder, mock_registry, capabilities):
     assert card.name == "Test Agent"
     assert card.description == "desc"
     assert card.version == "1.0.0"
-    assert card.url == "http://localhost:8000"
+    # In a2a-sdk 1.0, url is in supported_interfaces
+    assert any(iface.url == "http://localhost:8000" for iface in card.supported_interfaces)
     assert card.skills is not None
     assert card.capabilities is not None
 
@@ -80,8 +82,8 @@ def test_build_security_schemes_added(builder, mock_registry, capabilities):
         capabilities=capabilities,
         security_schemes=schemes,
     )
-    assert card.security_schemes is not None
-    assert card.supports_authenticated_extended_card is True
+    # In a2a-sdk 1.0, security_schemes is a proto map — non-empty when set
+    assert "bearerAuth" in card.security_schemes
 
 
 def test_build_no_security_schemes_when_none(builder, mock_registry, capabilities):
@@ -93,8 +95,8 @@ def test_build_no_security_schemes_when_none(builder, mock_registry, capabilitie
         url="http://x",
         capabilities=capabilities,
     )
-    assert card.security_schemes is None
-    assert card.supports_authenticated_extended_card is False
+    # In a2a-sdk 1.0, security_schemes is a proto map — empty when no schemes
+    assert len(card.security_schemes) == 0
 
 
 def test_build_default_io_modes(builder, mock_registry, capabilities):

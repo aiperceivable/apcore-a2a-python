@@ -5,15 +5,34 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from a2a.types import AgentCapabilities, AgentCard
+from a2a.types import (
+    AgentCapabilities,
+    AgentCard,
+    AgentInterface,
+    HTTPAuthSecurityScheme,
+    SecurityScheme,
+)
 
 from apcore_a2a.adapters.skill_mapper import SkillMapper
 
 logger = logging.getLogger(__name__)
 
 
+def _build_security_scheme(scheme_dict: dict) -> SecurityScheme:
+    """Convert a dict security scheme to a protobuf SecurityScheme."""
+    scheme_type = scheme_dict.get("type", "")
+    if scheme_type == "http":
+        return SecurityScheme(
+            http_auth_security_scheme=HTTPAuthSecurityScheme(
+                scheme=scheme_dict.get("scheme", "bearer"),
+                bearer_format=scheme_dict.get("bearerFormat", ""),
+            )
+        )
+    return SecurityScheme()
+
+
 class AgentCardBuilder:
-    """Builds a2a.types.AgentCard Pydantic models from Registry metadata.
+    """Builds a2a.types.AgentCard protobuf messages from Registry metadata.
 
     Caches the last-built card; call invalidate_cache() when registry changes.
     """
@@ -43,28 +62,36 @@ class AgentCardBuilder:
             version: Agent version string.
             url: Agent base URL.
             capabilities: a2a.types.AgentCapabilities instance.
-            security_schemes: Optional security scheme value (passed to AgentCard).
+            security_schemes: Optional dict of security scheme dicts.
 
         Returns:
-            a2a.types.AgentCard Pydantic model.
+            a2a.types.AgentCard protobuf message.
         """
         skills = self._build_skills(registry)
 
-        card = AgentCard(
+        agent_card = AgentCard(
             name=name,
             description=description,
             version=version,
-            url=url,
-            skills=skills,
+            supported_interfaces=[
+                AgentInterface(
+                    url=url,
+                    protocol_binding="JSONRPC",
+                    protocol_version="1.0",
+                ),
+            ],
             capabilities=capabilities,
+            skills=skills,
             default_input_modes=["text/plain", "application/json"],
             default_output_modes=["text/plain", "application/json"],
-            security_schemes=security_schemes,
-            supports_authenticated_extended_card=security_schemes is not None,
         )
 
-        self._cached_card = card
-        return card
+        if security_schemes:
+            for key, scheme_dict in security_schemes.items():
+                agent_card.security_schemes[key].CopyFrom(_build_security_scheme(scheme_dict))
+
+        self._cached_card = agent_card
+        return agent_card
 
     def get_cached_or_build(
         self,
@@ -100,7 +127,9 @@ class AgentCardBuilder:
         Returns a deep copy of the base card. Override in a subclass to include
         additional skill metadata available only to authenticated callers.
         """
-        return base_card.model_copy(deep=True)
+        extended = AgentCard()
+        extended.CopyFrom(base_card)
+        return extended
 
     def invalidate_cache(self) -> None:
         """Invalidate cached cards (call on registry module add/remove)."""

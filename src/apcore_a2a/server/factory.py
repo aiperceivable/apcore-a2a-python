@@ -9,9 +9,9 @@ import warnings
 from dataclasses import dataclass
 from typing import Any
 
-from a2a.server.apps.jsonrpc.starlette_app import A2AStarletteApplication
-from a2a.server.events.in_memory_queue_manager import InMemoryQueueManager
-from a2a.server.request_handlers.default_request_handler import DefaultRequestHandler
+from a2a.server.context import ServerCallContext
+from a2a.server.request_handlers import DefaultRequestHandler
+from a2a.server.routes import create_agent_card_routes, create_jsonrpc_routes, create_rest_routes
 from a2a.server.tasks.inmemory_push_notification_config_store import (
     InMemoryPushNotificationConfigStore,
 )
@@ -85,9 +85,10 @@ def _build_health_handler(task_store: Any, registry: Any, metrics: _MetricsState
             with contextlib.suppress(Exception):
                 module_count = len(registry.list())
 
-        # Probe the store
+        # Probe the store — a2a-sdk 1.0 requires a ServerCallContext argument
+        ctx = ServerCallContext()
         try:
-            await task_store.get("__health_probe__")
+            await task_store.get("__health_probe__", ctx)
         except Exception as e:
             return JSONResponse(
                 {
@@ -152,7 +153,7 @@ class A2AServerFactory:
         self._error_mapper = ErrorMapper()
         self._part_converter = PartConverter(self._schema_converter)
 
-        # apcore 0.15.0: register config namespace and error formatter
+        # apcore 0.22.0: register config namespace and error formatter
         register_a2a_namespace()
         try:
             ErrorFormatterRegistry.register("a2a", self._error_mapper)
@@ -178,6 +179,7 @@ class A2AServerFactory:
         explorer: bool = False,
         explorer_prefix: str = "/explorer",
         metrics: bool = False,
+        sys_modules: bool = False,
     ) -> tuple[Starlette, AgentCard]:
         """Build ASGI app and AgentCard. Returns (app, agent_card)."""
         # C3: cancel_on_disconnect is not used by DefaultRequestHandler; warn when False
@@ -203,15 +205,40 @@ class A2AServerFactory:
             security_schemes = auth.security_schemes()
         self._security_schemes = security_schemes
 
-        # Build capabilities
+        # Build capabilities (a2a-sdk 1.0: no state_transition_history field)
         capabilities = AgentCapabilities(
             streaming=True,
             push_notifications=push_notifications,
-            state_transition_history=True,
+            extended_agent_card=(auth is not None),
         )
         self._capabilities = capabilities
 
-        # Build AgentCard (a2a.types Pydantic model)
+        # P1-B: register sys.* modules BEFORE building the AgentCard so they appear in skills.
+        # Requires sys_modules=True and an executor that accepts .use() middleware.
+        if sys_modules and hasattr(executor, "use"):
+            try:
+                from apcore import register_sys_modules
+                from apcore.config import Config
+
+                # Build a Config instance with sys_modules enabled.
+                # Merge registry's own config (if any) so module-level settings are preserved.
+                registry_cfg: dict[str, Any] = getattr(registry, "config", {}) or {}
+                sys_data: dict[str, Any] = {
+                    **registry_cfg,
+                    "apcore": {
+                        **registry_cfg.get("apcore", {}),
+                        "sys_modules": {
+                            **registry_cfg.get("apcore", {}).get("sys_modules", {}),
+                            "enabled": True,
+                        },
+                    },
+                }
+                register_sys_modules(registry, executor, Config(data=sys_data))
+                logger.info("Registered apcore system modules (sys.*)")
+            except Exception:
+                logger.warning("register_sys_modules failed — continuing without sys modules", exc_info=True)
+
+        # Build AgentCard AFTER sys_modules so sys.* skills are included when enabled.
         agent_card = self._agent_card_builder.build(
             registry,
             name=name,
@@ -237,6 +264,22 @@ class A2AServerFactory:
             on_state_change=on_state_change_cb,
         )
 
+        # P1-A: wire apcore observability middleware into the executor.
+        # ObsLoggingMiddleware: structured per-call logging (always, low overhead).
+        # ErrorHistoryMiddleware: tracks error patterns per module (only when metrics=True,
+        # since register_sys_modules may already add it when sys_modules=True).
+        if hasattr(executor, "use"):
+            try:
+                from apcore import ObsLoggingMiddleware
+
+                executor.use(ObsLoggingMiddleware())
+                if metrics and not sys_modules:
+                    from apcore import ErrorHistoryMiddleware
+
+                    executor.use(ErrorHistoryMiddleware())
+            except Exception:
+                logger.debug("Could not add observability middleware", exc_info=True)
+
         # Build task store
         sdk_task_store = task_store if task_store is not None else A2ATaskStore()
         self._task_store = sdk_task_store
@@ -244,46 +287,18 @@ class A2AServerFactory:
         # Build push config store
         push_config_store = InMemoryPushNotificationConfigStore() if push_notifications else None
 
-        # Build DefaultRequestHandler
-        handler = DefaultRequestHandler(
-            agent_executor=apcore_executor,
-            task_store=sdk_task_store,
-            queue_manager=InMemoryQueueManager(),
-            push_config_store=push_config_store,
-        )
-
         # Build extended card
         extended_card = None
         if auth is not None:
             extended_card = self._agent_card_builder.build_extended(base_card=agent_card)
 
-        # A2/MAINT1: snapshot all params into locals so the closure is independent of
-        # future create() calls on the same factory instance
-        _snap_registry = registry
-        _snap_name = name
-        _snap_description = description
-        _snap_version = version
-        _snap_url = url
-        _snap_capabilities = capabilities
-        _snap_security_schemes = security_schemes
-        _snap_builder = self._agent_card_builder
-
-        def _card_modifier(_card: AgentCard) -> AgentCard:
-            return _snap_builder.get_cached_or_build(
-                registry=_snap_registry,
-                name=_snap_name,
-                description=_snap_description,
-                version=_snap_version,
-                url=_snap_url,
-                capabilities=_snap_capabilities,
-                security_schemes=_snap_security_schemes,
-            )
-
-        self._a2a_app = A2AStarletteApplication(
+        # Build DefaultRequestHandler (a2a-sdk 1.0: agent_card is required 3rd arg)
+        handler = DefaultRequestHandler(
+            agent_executor=apcore_executor,
+            task_store=sdk_task_store,
             agent_card=agent_card,
-            http_handler=handler,
+            push_config_store=push_config_store,
             extended_agent_card=extended_card,
-            card_modifier=_card_modifier,
         )
 
         # Build custom routes (health, optional metrics, optional explorer)
@@ -348,8 +363,19 @@ class A2AServerFactory:
                 )
             )
 
-        # Build Starlette app — custom routes come first, SDK adds its own routes
-        app = self._a2a_app.build(routes=custom_routes, middleware=middleware)
+        # Build Starlette app from routes directly (a2a-sdk 1.0 route functions)
+        # Serve agent card at both A2A 1.0 path and legacy 0.3.x path for backward compat
+        agent_card_routes = create_agent_card_routes(agent_card=agent_card)
+        agent_card_routes_legacy = create_agent_card_routes(agent_card=agent_card, card_url="/.well-known/agent.json")
+        rest_routes = create_rest_routes(request_handler=handler)
+        # enable_v0_3_compat: support legacy 0.3.x method names (message/send, tasks/get, etc.)
+        jsonrpc_routes = create_jsonrpc_routes(request_handler=handler, rpc_url="/", enable_v0_3_compat=True)
+
+        # custom_routes first: REST routes include Mount /{tenant} which catches all paths
+        # including /explorer, /health etc. if placed before them.
+        all_routes = custom_routes + agent_card_routes + agent_card_routes_legacy + list(rest_routes) + jsonrpc_routes
+
+        app = Starlette(routes=all_routes, middleware=middleware)
 
         return app, agent_card
 

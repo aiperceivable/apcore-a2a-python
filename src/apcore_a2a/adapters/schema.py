@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-_MAX_REF_DEPTH = 32
+from apcore_toolkit import deep_resolve_refs
 
 
 class SchemaConverter:
@@ -76,10 +76,14 @@ class SchemaConverter:
         if not schema:
             return {"type": "object", "properties": {}}
 
-        # Inline $refs if present
+        # Inline $refs if present. Delegate JSON $ref resolution to the shared
+        # apcore-toolkit resolver (RFC 6901 pointer walk, handles $defs /
+        # definitions / components, nested allOf/anyOf/oneOf/items, and is
+        # depth-capped against circular refs) — same helper used by apcore-mcp
+        # and apcore-cli. The schema itself is the resolution document because
+        # Pydantic emits self-contained "#/$defs/..." pointers.
         if "$defs" in schema:
-            defs = schema["$defs"]
-            schema = self._inline_refs(schema, defs)
+            schema = deep_resolve_refs(schema, schema)
             # Remove $defs from the final schema
             schema.pop("$defs", None)
 
@@ -87,85 +91,6 @@ class SchemaConverter:
         schema = self._ensure_object_type(schema)
 
         return schema
-
-    def _inline_refs(
-        self,
-        schema: Any,
-        defs: dict[str, Any],
-        _seen: set[str] | None = None,
-        _depth: int = 0,
-    ) -> Any:
-        """Recursively inline all $ref references, removing $defs.
-
-        Args:
-            schema: Schema dict that may contain $refs
-            defs: Dictionary of definitions from $defs
-            _seen: Internal set tracking visited $ref paths to prevent
-                infinite recursion on circular references.
-            _depth: Current recursion depth for safety limit.
-
-        Returns:
-            Schema with all $refs replaced by their definitions
-
-        Raises:
-            ValueError: If a circular $ref is detected or depth exceeds limit.
-        """
-        if _depth > _MAX_REF_DEPTH:
-            raise ValueError(f"Schema $ref depth limit exceeded (max {_MAX_REF_DEPTH})")
-
-        if _seen is None:
-            _seen = set()
-
-        if isinstance(schema, dict):
-            # If this is a $ref, resolve it
-            if "$ref" in schema:
-                ref_path = schema["$ref"]
-                if ref_path in _seen:
-                    raise ValueError(f"Circular $ref detected: {ref_path}")
-                _seen = _seen | {ref_path}
-                resolved = self._resolve_ref(ref_path, defs)
-                # Recursively inline refs in the resolved schema
-                return self._inline_refs(resolved, defs, _seen, _depth + 1)
-
-            # Otherwise, recursively process all values
-            result = {}
-            for key, value in schema.items():
-                if key == "$defs":
-                    # Skip $defs, we'll remove it later
-                    continue
-                result[key] = self._inline_refs(value, defs, _seen, _depth + 1)
-            return result
-        elif isinstance(schema, list):
-            # Recursively process list items
-            return [self._inline_refs(item, defs, _seen, _depth + 1) for item in schema]
-        else:
-            # Primitive value, return as-is
-            return schema
-
-    def _resolve_ref(self, ref_path: str, defs: dict[str, Any]) -> dict[str, Any]:
-        """Resolve a single $ref path against $defs.
-
-        Args:
-            ref_path: JSON Schema $ref path like "#/$defs/Step"
-            defs: Dictionary of definitions
-
-        Returns:
-            The resolved schema definition (deep copy)
-
-        Raises:
-            ValueError: If the $ref path is invalid or not found
-        """
-        if not ref_path.startswith("#/$defs/"):
-            raise ValueError(f"Unsupported $ref format: {ref_path}")
-
-        # Extract the definition name
-        def_name = ref_path[8:]  # Remove "#/$defs/"
-
-        if def_name not in defs:
-            raise KeyError(f"Definition not found: {def_name}")
-
-        # Return a deep copy to avoid circular reference issues
-        return copy.deepcopy(defs[def_name])
 
     def _ensure_object_type(self, schema: dict[str, Any]) -> dict[str, Any]:
         """Ensure schema has type: object with properties.
