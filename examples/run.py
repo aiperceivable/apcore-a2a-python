@@ -9,8 +9,8 @@ Enable JWT authentication by setting JWT_SECRET:
     JWT_SECRET=my-secret PYTHONPATH=./examples/binding_demo python examples/run.py
 
 Then test with curl:
-    # Agent card (always accessible)
-    curl http://localhost:8000/.well-known/agent.json
+    # Agent card (always accessible; 0.3 alias /.well-known/agent.json also served)
+    curl http://localhost:8000/.well-known/agent-card.json
 
     # Send a message (JSON-RPC)
     curl -X POST http://localhost:8000/ \\
@@ -60,7 +60,7 @@ else:
 
 print()
 print("Explorer UI:         http://127.0.0.1:8000/explorer/")
-print("Agent Card:          http://127.0.0.1:8000/.well-known/agent.json")
+print("Agent Card:          http://127.0.0.1:8000/.well-known/agent-card.json")
 print()
 
 # 5. Launch A2A server with Explorer UI

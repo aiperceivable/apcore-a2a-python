@@ -22,7 +22,7 @@ It solves a common problem: **you've built AI capabilities with apcore modules, 
 ## Features
 
 - **One-call server** — launch a compliant A2A server with `serve(registry)`
-- **Automatic Agent Card** — `/.well-known/agent.json` generated from module metadata
+- **Automatic Agent Card** — `/.well-known/agent-card.json` generated from module metadata (the 0.3 alias `/.well-known/agent.json` is also served)
 - **Skill mapping** — apcore modules become A2A Skills with names, descriptions, tags, and examples; `metadata["display"]["a2a"]` overrides surface-facing fields (§5.13)
 - **Full task lifecycle** — submitted, working, completed, failed, canceled, input-required
 - **SSE streaming** — `message/stream` with real-time status and artifact updates
@@ -37,7 +37,8 @@ It solves a common problem: **you've built AI capabilities with apcore modules, 
 ## Requirements
 
 - Python >= 3.11
-- `apcore` >= 0.15.1
+- `apcore` >= 0.22.0
+- `apcore-toolkit` >= 0.8.0
 
 ---
 
@@ -63,7 +64,7 @@ registry.discover()
 serve(Executor(registry))  # Starts on http://0.0.0.0:8000
 ```
 
-Your agent is now live at `http://localhost:8000/.well-known/agent.json`.
+Your agent is now live at `http://localhost:8000/.well-known/agent-card.json` (the 0.3 alias `/.well-known/agent.json` is also served).
 
 ### Try the Examples
 

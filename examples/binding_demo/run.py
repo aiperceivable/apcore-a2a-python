@@ -21,7 +21,7 @@ executor = Executor(registry)
 
 print()
 print("Explorer UI:  http://127.0.0.1:8000/explorer/")
-print("Agent Card:   http://127.0.0.1:8000/.well-known/agent.json")
+print("Agent Card:   http://127.0.0.1:8000/.well-known/agent-card.json")
 print()
 
 # 3. Launch A2A server with Explorer UI

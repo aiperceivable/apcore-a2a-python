@@ -115,8 +115,8 @@ Payload:
 ```bash
 TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkZW1vLXVzZXIiLCJ0eXBlIjoidXNlciIsInJvbGVzIjpbImFkbWluIl19.yOFQMlZnMZwXg6KoJX61sCm2VbCzmqtT8dFRNsOhaZM"
 
-# Agent card (always accessible)
-curl http://localhost:8000/.well-known/agent.json
+# Agent card (always accessible; 0.3 alias /.well-known/agent.json also served)
+curl http://localhost:8000/.well-known/agent-card.json
 
 # Send message without auth
 curl -X POST http://localhost:8000/ \
