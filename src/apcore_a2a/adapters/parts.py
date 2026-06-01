@@ -6,7 +6,9 @@ import json
 from typing import Any
 from uuid import uuid4
 
-from a2a.types import Artifact, DataPart, FilePart, Part, TextPart
+from a2a.types import Artifact, Part
+from google.protobuf import struct_pb2
+from google.protobuf.json_format import MessageToDict, ParseDict
 
 from apcore_a2a.adapters.schema import SchemaConverter
 
@@ -21,7 +23,7 @@ class PartConverter:
         """Convert a2a.types.Part list to apcore module input.
 
         Args:
-            parts: List of a2a.types.Part Pydantic models.
+            parts: List of a2a.types.Part protobuf messages.
             descriptor: ModuleDescriptor (used for schema-aware conversion).
 
         Returns:
@@ -37,25 +39,25 @@ class PartConverter:
             raise ValueError("Multiple parts are not supported; expected exactly one Part")
 
         part = parts[0]
-        root = part.root
+        which = part.WhichOneof("content")
 
-        if isinstance(root, TextPart):
+        if which == "text":
             input_schema = getattr(descriptor, "input_schema", None)
             root_type = self._schema_converter.detect_root_type(input_schema)
             if root_type == "object":
                 try:
-                    return json.loads(root.text)
+                    return json.loads(part.text)
                 except json.JSONDecodeError as e:
                     raise ValueError(f"TextPart text is not valid JSON: {e}") from e
-            return root.text
+            return part.text
 
-        if isinstance(root, DataPart):
-            return root.data
+        if which == "data":
+            return MessageToDict(part.data)
 
-        if isinstance(root, FilePart):
+        if which in ("url", "raw"):
             raise ValueError("FilePart is not supported")
 
-        raise ValueError(f"Unsupported part type: {type(root)!r}")
+        raise ValueError("Empty or unknown part content")
 
     def output_to_parts(self, output: Any, task_id: str = "") -> Artifact:
         """Convert apcore module output to a2a.types.Artifact.
@@ -65,26 +67,22 @@ class PartConverter:
             task_id: Task ID used to build artifact_id.
 
         Returns:
-            a2a.types.Artifact Pydantic model.
+            a2a.types.Artifact protobuf message.
         """
         artifact_id = f"art-{task_id or str(uuid4())}"
 
         if output is None:
-            return Artifact(artifact_id=artifact_id, parts=[])
+            return Artifact(artifact_id=artifact_id)
 
         if isinstance(output, str):
-            parts = [Part(root=TextPart(text=output))]
-            return Artifact(artifact_id=artifact_id, parts=parts)
+            return Artifact(artifact_id=artifact_id, parts=[Part(text=output)])
 
         if isinstance(output, dict):
-            parts = [Part(root=DataPart(data=output))]
-            return Artifact(artifact_id=artifact_id, parts=parts)
+            return Artifact(artifact_id=artifact_id, parts=[Part(data=ParseDict(output, struct_pb2.Value()))])
 
         if isinstance(output, list):
             # Serialize lists as JSON rather than Python repr
-            parts = [Part(root=TextPart(text=json.dumps(output)))]
-            return Artifact(artifact_id=artifact_id, parts=parts)
+            return Artifact(artifact_id=artifact_id, parts=[Part(text=json.dumps(output))])
 
         # Any other type: convert to string
-        parts = [Part(root=TextPart(text=str(output)))]
-        return Artifact(artifact_id=artifact_id, parts=parts)
+        return Artifact(artifact_id=artifact_id, parts=[Part(text=str(output))])

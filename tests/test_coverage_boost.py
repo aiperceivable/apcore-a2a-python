@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from a2a.types import Part, TextPart
+from a2a.types import Part
 
 from apcore_a2a.adapters.schema import SchemaConverter
 
@@ -17,22 +17,26 @@ def test_parts_to_input_multiple_parts_raises():
 
     pc = PartConverter(SchemaConverter())
     parts = [
-        Part(root=TextPart(text="a")),
-        Part(root=TextPart(text="b")),
+        Part(text="a"),
+        Part(text="b"),
     ]
     with pytest.raises(ValueError, match="Multiple parts"):
         pc.parts_to_input(parts, None)
 
 
 def test_parts_to_input_unsupported_kind_raises():
-    from a2a.types import FilePart, FileWithUri
-
     from apcore_a2a.adapters.parts import PartConverter
 
     pc = PartConverter(SchemaConverter())
-    file_part = Part(root=FilePart(file=FileWithUri(uri="http://example.com/v.mp4", mime_type="video/mp4")))
-    with pytest.raises(ValueError):
+    # A Part carrying a file URL is a file part, which is not supported.
+    file_part = Part(url="https://example.com/file.bin")
+    with pytest.raises(ValueError, match="FilePart is not supported"):
         pc.parts_to_input([file_part], None)
+
+    # An empty Part has unknown content and raises a distinct error.
+    empty_part = Part()
+    with pytest.raises(ValueError, match="Empty or unknown part content"):
+        pc.parts_to_input([empty_part], None)
 
 
 # ── adapters/errors.py ─────────────────────────────────────────────────────────
