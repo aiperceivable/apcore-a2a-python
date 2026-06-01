@@ -12,7 +12,7 @@ from apcore_a2a.client.exceptions import A2ADiscoveryError
 class AgentCardFetcher:
     def __init__(self, http: httpx.AsyncClient, base_url: str, *, ttl: float = 300.0) -> None:
         self._http = http
-        self._url = f"{base_url}/.well-known/agent.json"
+        self._url = f"{base_url}/.well-known/agent-card.json"
         self._ttl = ttl
         self._cached: dict | None = None
         self._cached_at: float = 0.0

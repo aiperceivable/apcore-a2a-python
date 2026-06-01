@@ -83,4 +83,4 @@ async def test_correct_url_used(mock_http):
 
     fetcher = AgentCardFetcher(mock_http, "http://agent.example.com", ttl=300.0)
     await fetcher.fetch()
-    mock_http.get.assert_called_once_with("http://agent.example.com/.well-known/agent.json")
+    mock_http.get.assert_called_once_with("http://agent.example.com/.well-known/agent-card.json")
