@@ -12,6 +12,25 @@ from apcore import Identity
 logger = logging.getLogger(__name__)
 
 
+def _claim_to_string(value: Any) -> str | None:
+    """Coerce a JWT claim value to a string using the canonical cross-language rule.
+
+    Mirrors the Rust SDK's ``claim_to_string`` (the agreed-upon canonical behaviour):
+    strings pass through, numbers and booleans are stringified (``True`` -> ``"true"``),
+    and ``null`` / arrays / objects are rejected (return ``None``). This keeps the three
+    SDKs in agreement on whether a malformed (non-scalar) claim is accepted, and on the
+    exact string an accepted claim produces.
+    """
+    # bool is a subclass of int, so it must be checked first.
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return value
+    if isinstance(value, int | float):
+        return str(value)
+    return None
+
+
 @dataclass(frozen=True)
 class ClaimMapping:
     """Maps JWT claims to ``Identity`` fields.
@@ -87,6 +106,12 @@ class JWTAuthenticator:
             options: dict[str, Any] = {}
             if self._require_claims:
                 options["require"] = self._require_claims
+            # Disable PyJWT's RFC sub-type enforcement (PyJWT >= 2.10 rejects a
+            # non-string `sub`). The canonical cross-language rule coerces a scalar
+            # numeric/boolean `sub` to a string in ``_claim_to_string`` and rejects
+            # only null/array/object; deferring the check there keeps Python aligned
+            # with the Rust/TS SDKs.
+            options["verify_sub"] = False
 
             kwargs: dict[str, Any] = {
                 "jwt": token,
@@ -108,16 +133,28 @@ class JWTAuthenticator:
             return None
 
     def _payload_to_identity(self, payload: dict[str, Any]) -> Identity | None:
-        """Convert a decoded JWT payload to an Identity."""
+        """Convert a decoded JWT payload to an Identity.
+
+        Claim coercion follows the canonical cross-language rule (see
+        ``_claim_to_string``): the id claim must coerce to a scalar string or the
+        token is rejected; a ``null``/non-scalar type claim falls back to ``"user"``;
+        and non-scalar role elements are dropped.
+        """
         mapping = self._claim_mapping
-        identity_id = payload.get(mapping.id_claim)
+        identity_id = _claim_to_string(payload.get(mapping.id_claim))
         if identity_id is None:
             return None
 
-        identity_type = payload.get(mapping.type_claim, "user")
+        # Only an absent/null/non-scalar type falls back to "user"; an explicit
+        # empty-string type is preserved (parity with Rust unwrap_or_else / TS ??).
+        identity_type = _claim_to_string(payload.get(mapping.type_claim))
+        if identity_type is None:
+            identity_type = "user"
 
         raw_roles = payload.get(mapping.roles_claim)
-        roles = tuple(str(r) for r in raw_roles) if isinstance(raw_roles, list) else ()
+        roles = (
+            tuple(s for r in raw_roles if (s := _claim_to_string(r)) is not None) if isinstance(raw_roles, list) else ()
+        )
 
         attrs: dict[str, Any] = {}
         if mapping.attrs_claims:
@@ -126,8 +163,8 @@ class JWTAuthenticator:
                     attrs[claim] = payload[claim]
 
         return Identity(
-            id=str(identity_id),
-            type=str(identity_type),
+            id=identity_id,
+            type=identity_type,
             roles=roles,
             attrs=attrs,
         )

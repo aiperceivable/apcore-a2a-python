@@ -262,7 +262,7 @@ class ApCoreAgentExecutor(AgentExecutor):
                 chunk = await asyncio.wait_for(iterator.__anext__(), timeout=remaining)
             except StopAsyncIteration:
                 break
-            except (TimeoutError, asyncio.TimeoutError):
+            except TimeoutError:
                 await self._fail_stream_timeout(context, event_queue)
                 return
             parts = self._part_converter.output_to_parts(chunk, context.task_id).parts

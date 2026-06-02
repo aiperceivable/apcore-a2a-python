@@ -179,3 +179,58 @@ def test_security_schemes_compatible_with_agent_card():
 def test_protocol_compliance():
     auth = JWTAuthenticator(SECRET)
     assert isinstance(auth, Authenticator)
+
+
+# Claim coercion — canonical cross-language rule (strict, Rust-aligned)
+def test_non_scalar_sub_claim_is_rejected():
+    # A-D-101: a list/dict `sub` is not a valid identity id; reject the token
+    # rather than coercing it to "[1, 2]" / "{...}".
+    auth = JWTAuthenticator(SECRET)
+    assert auth.authenticate(headers(make_token({"sub": [1, 2]}))) is None
+    assert auth.authenticate(headers(make_token({"sub": {"a": 1}}))) is None
+
+
+def test_numeric_sub_claim_is_coerced_to_string():
+    auth = JWTAuthenticator(SECRET)
+    identity = auth.authenticate(headers(make_token({"sub": 12345})))
+    assert identity is not None
+    assert identity.id == "12345"
+
+
+def test_bool_claim_is_lowercase_stringified():
+    # A scalar bool coerces to lowercase "true"/"false" (parity with Rust/TS).
+    auth = JWTAuthenticator(SECRET)
+    identity = auth.authenticate(headers(make_token({"sub": True})))
+    assert identity is not None
+    assert identity.id == "true"
+
+
+def test_null_type_claim_falls_back_to_user():
+    # A-D-102: an explicit null type must fall back to "user", not "None".
+    auth = JWTAuthenticator(SECRET)
+    identity = auth.authenticate(headers(make_token({"sub": "u", "type": None})))
+    assert identity is not None
+    assert identity.type == "user"
+
+
+def test_numeric_type_claim_is_coerced():
+    auth = JWTAuthenticator(SECRET)
+    identity = auth.authenticate(headers(make_token({"sub": "u", "type": 5})))
+    assert identity is not None
+    assert identity.type == "5"
+
+
+def test_empty_string_type_claim_is_preserved():
+    # Only absent/null/non-scalar falls back to "user"; "" is a valid scalar.
+    auth = JWTAuthenticator(SECRET)
+    identity = auth.authenticate(headers(make_token({"sub": "u", "type": ""})))
+    assert identity is not None
+    assert identity.type == ""
+
+
+def test_non_scalar_role_elements_are_dropped():
+    # A-D-103: null/array/object role elements are dropped; scalars are coerced.
+    auth = JWTAuthenticator(SECRET)
+    identity = auth.authenticate(headers(make_token({"sub": "u", "roles": ["admin", 7, None, ["x"], {"k": 1}]})))
+    assert identity is not None
+    assert tuple(identity.roles) == ("admin", "7")

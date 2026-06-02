@@ -324,9 +324,7 @@ async def test_execute_streams_even_when_apcore_ctx_is_none(mock_registry, monke
     # executor's `except: pass` leaves apcore_ctx = None.
     import apcore
 
-    monkeypatch.setattr(
-        apcore.Context, "create", MagicMock(side_effect=RuntimeError("no binding"))
-    )
+    monkeypatch.setattr(apcore.Context, "create", MagicMock(side_effect=RuntimeError("no binding")))
 
     received_args: list = []
 
