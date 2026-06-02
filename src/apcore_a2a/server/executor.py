@@ -104,16 +104,23 @@ class ApCoreAgentExecutor(AgentExecutor):
             await self._fail(context, event_queue, "Missing required parameter: metadata.skillId")
             return
 
-        # 2. Validate skill exists in registry
+        # 2. Validate skill exists in registry (fail closed).
+        # Spec: validate skill_id is a known module → error if not. Matching the
+        # Rust SDK, we fail closed: if the registry is unavailable (list() raises)
+        # OR the skill_id is not a known module, the task fails with "Skill not
+        # found" rather than proceeding optimistically.
         if self._registry is not None:
             try:
                 known = self._registry.list()
-                if skill_id not in known:
-                    self._notify("submitted", "failed")
-                    await self._fail(context, event_queue, f"Skill not found: {skill_id}")
-                    return
             except Exception:
-                pass
+                logger.warning("Registry unavailable while validating skill %s", skill_id)
+                self._notify("submitted", "failed")
+                await self._fail(context, event_queue, f"Skill not found: {skill_id}")
+                return
+            if skill_id not in known:
+                self._notify("submitted", "failed")
+                await self._fail(context, event_queue, f"Skill not found: {skill_id}")
+                return
 
         # 3. Parse Parts → apcore input
         parts = list(context.message.parts) if context.message else []
@@ -159,9 +166,12 @@ class ApCoreAgentExecutor(AgentExecutor):
         self._notify("submitted", "working")
         try:
             stream_fn = getattr(self._executor, "stream", None)
+            # Stream selection is based on the executor's stream method alone,
+            # matching TS's canStream (AsyncGeneratorFunction check). The apcore
+            # context is NOT required: _execute_streaming tolerates a None ctx,
+            # so streaming is still chosen in the degraded no-apcore-binding state.
             _can_stream = (
-                apcore_ctx is not None
-                and stream_fn is not None
+                stream_fn is not None
                 and callable(stream_fn)
                 and (inspect.isasyncgenfunction(stream_fn) or inspect.iscoroutinefunction(stream_fn))
             )
@@ -223,10 +233,38 @@ class ApCoreAgentExecutor(AgentExecutor):
         apcore_ctx: Any,
         context_id: str,
     ) -> None:
-        """Stream chunks from executor.stream(), emitting TaskArtifactUpdateEvents."""
+        """Stream chunks from executor.stream(), emitting TaskArtifactUpdateEvents.
+
+        Bound the whole streaming loop by a host-side wall-clock budget
+        (execution_timeout) in addition to apcore's cooperative global_deadline.
+        A monotonic deadline is computed once; each chunk fetch is wrapped with
+        asyncio.wait_for(remaining). On timeout we stop the loop and emit a failed
+        status, matching the Rust SDK's stream_channel tokio timeout.
+        """
         artifact_id = f"art-{context.task_id or str(uuid4())}"
         chunk_index = 0
-        async for chunk in self._executor.stream(skill_id, inputs, apcore_ctx):
+        deadline = time.monotonic() + self._execution_timeout
+        # Mirror TS's `apcoreCtx ? ...with ctx : ...without ctx`: only pass the
+        # apcore context when present, so the degraded no-binding state still
+        # streams instead of erroring on a None positional argument.
+        stream = (
+            self._executor.stream(skill_id, inputs, apcore_ctx)
+            if apcore_ctx is not None
+            else self._executor.stream(skill_id, inputs)
+        )
+        iterator = stream.__aiter__()
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                await self._fail_stream_timeout(context, event_queue)
+                return
+            try:
+                chunk = await asyncio.wait_for(iterator.__anext__(), timeout=remaining)
+            except StopAsyncIteration:
+                break
+            except (TimeoutError, asyncio.TimeoutError):
+                await self._fail_stream_timeout(context, event_queue)
+                return
             parts = self._part_converter.output_to_parts(chunk, context.task_id).parts
             await event_queue.enqueue_event(
                 TaskArtifactUpdateEvent(
@@ -256,6 +294,20 @@ class ApCoreAgentExecutor(AgentExecutor):
             )
         )
         self._notify("working", "completed")
+
+    async def _fail_stream_timeout(self, context: RequestContext, event_queue: EventQueue) -> None:
+        """Emit a failed status when the streaming wall-clock budget is exceeded.
+
+        Mirrors the MODULE_TIMEOUT handling in execute(): the host-side budget
+        bounds the whole streaming loop, matching Rust's stream_channel timeout.
+        """
+        logger.warning(
+            "Streaming execution timed out after %ss for task %s",
+            self._execution_timeout,
+            context.task_id,
+        )
+        self._notify("working", "failed")
+        await self._fail(context, event_queue, "Execution timed out")
 
     async def _execute_single(self, skill_id: str, inputs: Any, apcore_ctx: Any) -> Any:
         """Single call_async() execution with timeout."""

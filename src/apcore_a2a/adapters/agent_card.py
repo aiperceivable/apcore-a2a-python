@@ -145,7 +145,7 @@ class AgentCardBuilder:
                 continue
 
             description = getattr(descriptor, "description", None)
-            if not description:
+            if not (description or "").strip():
                 logger.warning("Skipping module %s: missing description", module_id)
                 continue
 

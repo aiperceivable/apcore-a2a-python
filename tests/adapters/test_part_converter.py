@@ -83,9 +83,22 @@ def test_none_output_returns_empty_artifact(converter):
 
 
 def test_int_output_returns_text_part(converter):
+    """A-D-007: int output emits its JSON form ("42"), matching TS/Rust."""
     artifact = converter.output_to_parts(42)
     assert artifact.parts[0].WhichOneof("content") == "text"
-    assert "42" in artifact.parts[0].text
+    assert artifact.parts[0].text == "42"
+
+
+def test_bool_output_returns_json_literal_text_part(converter):
+    """A-D-007: bool output must be the JSON literal "true"/"false",
+    not Python's str(bool) ("True"/"False"), matching TS String(true) and
+    Rust Value::to_string."""
+    true_artifact = converter.output_to_parts(True)
+    assert true_artifact.parts[0].WhichOneof("content") == "text"
+    assert true_artifact.parts[0].text == "true"
+
+    false_artifact = converter.output_to_parts(False)
+    assert false_artifact.parts[0].text == "false"
 
 
 def test_artifact_id_uses_task_id(converter):

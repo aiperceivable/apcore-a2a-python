@@ -71,6 +71,26 @@ def test_build_skills_populated(builder, mock_registry, capabilities):
     assert card.skills[0].id == "image.resize"
 
 
+def test_build_skips_whitespace_only_description(builder, simple_descriptor, capabilities):
+    """A-D-010: a module whose description is whitespace-only ("   ") is
+    treated as having no meaningful description and skipped from the card,
+    matching Rust's trim behavior."""
+    simple_descriptor.description = "   "
+    reg = MagicMock()
+    reg.list.return_value = ["image.resize"]
+    reg.get_definition.return_value = simple_descriptor
+
+    card = builder.build(
+        reg,
+        name="A",
+        description="B",
+        version="1",
+        url="http://x",
+        capabilities=capabilities,
+    )
+    assert len(card.skills) == 0
+
+
 def test_build_security_schemes_added(builder, mock_registry, capabilities):
     schemes = {"bearerAuth": {"type": "http", "scheme": "bearer"}}
     card = builder.build(

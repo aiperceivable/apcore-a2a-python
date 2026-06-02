@@ -312,3 +312,50 @@ async def test_on_state_change_not_called_when_none(mock_executor, mock_registry
     queue = await _make_queue()
     # Must not raise
     await executor.execute(ctx, queue)
+
+
+async def test_execute_streams_even_when_apcore_ctx_is_none(mock_registry, monkeypatch):
+    """A-D-016: a streaming executor must be dispatched to the streaming path
+    even in the degraded no-apcore-binding state (apcore_ctx is None),
+    matching TS canStream (which checks only the stream method) and
+    executeStreaming (which tolerates a null ctx).
+    """
+    # Force apcore_ctx to remain None by making Context.create raise, so the
+    # executor's `except: pass` leaves apcore_ctx = None.
+    import apcore
+
+    monkeypatch.setattr(
+        apcore.Context, "create", MagicMock(side_effect=RuntimeError("no binding"))
+    )
+
+    received_args: list = []
+
+    class _StreamingExecutor:
+        async def stream(self, module_id, inputs, ctx=None):
+            # Record positional args to assert the ctx was NOT passed.
+            received_args.append((module_id, inputs, ctx))
+            yield {"chunk": 1}
+            yield {"chunk": 2}
+
+    executor = ApCoreAgentExecutor(
+        _StreamingExecutor(),
+        PartConverter(SchemaConverter()),
+        ErrorMapper(),
+        mock_registry,
+        execution_timeout=5,
+    )
+    ctx = _make_context(skill_id="image.resize", text="{}")
+    queue = await _make_queue()
+
+    await executor.execute(ctx, queue)
+
+    # Streaming path was taken: stream() was invoked without the apcore ctx.
+    assert len(received_args) == 1
+    assert received_args[0][2] is None
+
+    events = await _drain_queue(queue)
+    artifact_events = [e for e in events if type(e).__name__ == "TaskArtifactUpdateEvent"]
+    # Two chunk artifacts + a final last_chunk artifact.
+    assert len(artifact_events) >= 2
+    status_events = [e for e in events if hasattr(e, "status")]
+    assert any(e.status.state == TaskState.TASK_STATE_COMPLETED for e in status_events)

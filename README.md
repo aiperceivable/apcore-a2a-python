@@ -92,15 +92,16 @@ async def main():
         card = await client.discover()
         print(f"Agent: {card['name']}, Skills: {len(card['skills'])}")
 
-        # Send a message
+        # Send a message (route to a skill via metadata.skillId)
+        message = {"role": "user", "parts": [{"kind": "text", "text": "Hello!"}]}
         task = await client.send_message(
-            {"role": "user", "parts": [{"kind": "text", "text": "Hello!"}]},
-            skill_id="my.skill",
+            message,
+            metadata={"skillId": "my.skill"},
         )
         print(f"Result: {task['status']['state']}")
 
         # Or stream the response
-        async for event in client.stream_message(...):
+        async for event in client.stream_message(message, metadata={"skillId": "my.skill"}):
             print(event)
 
 asyncio.run(main())
@@ -179,7 +180,7 @@ app = await async_serve(registry_or_executor, **kwargs)
 Default in-memory task store. Implement the `TaskStore` protocol for persistent backends (Redis, PostgreSQL, etc.).
 
 ```python
-from apcore_a2a.storage.memory import InMemoryTaskStore
+from apcore_a2a.storage import InMemoryTaskStore
 
 store = InMemoryTaskStore()
 serve(registry, task_store=store)

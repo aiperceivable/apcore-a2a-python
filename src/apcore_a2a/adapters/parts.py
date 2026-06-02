@@ -84,5 +84,11 @@ class PartConverter:
             # Serialize lists as JSON rather than Python repr
             return Artifact(artifact_id=artifact_id, parts=[Part(text=json.dumps(output))])
 
-        # Any other type: convert to string
-        return Artifact(artifact_id=artifact_id, parts=[Part(text=str(output))])
+        # Any other scalar type: emit a JSON literal to match TS/Rust
+        # (e.g. bool -> "true"/"false", int/float -> their JSON form).
+        # Fall back to str() only for non-JSON-serializable objects.
+        try:
+            text = json.dumps(output)
+        except TypeError:
+            text = str(output)
+        return Artifact(artifact_id=artifact_id, parts=[Part(text=text)])
