@@ -161,6 +161,7 @@ serve(
     execution_timeout=300,
     log_level=None,
     metrics=False,          # Enable /metrics endpoint
+    sys_modules=False,      # Register apcore sys.* modules (requires executor.use())
 )
 ```
 
