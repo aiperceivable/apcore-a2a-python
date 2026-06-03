@@ -5,22 +5,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.1] - 2026-06-03
-
-### Added
-
-- Conformance test suite (`tests/conformance/`) mirroring the shared cross-language fixtures.
-- `LICENSE` (Apache-2.0).
-
-### Changed
-
-- `PartConverter` now serializes lists and scalars with compact JSON separators (`,`/`:`) so artifact text byte-matches the TypeScript (`JSON.stringify`) and Rust (`serde_json`) adapters.
-
-### Removed
-
-- Orphaned standalone `uv.lock` — the package is a uv workspace member; the workspace-root lock is authoritative and already pins `a2a-sdk 1.0.3`.
-- Duplicate `httpx` declaration in dev dependencies (already a runtime dependency).
-
 ## [0.4.0] - 2026-06-01
 
 ### Changed
@@ -33,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`apcore` dependency** bumped to `>=0.22.0`; **added `apcore-toolkit >=0.8.0`** (schema `$ref` resolution via `deep_resolve_refs`).
 - **New apcore 0.22 capabilities wired** — real streaming via `Executor.stream()`, cooperative cancellation via `CancelToken`, `global_deadline` (from `execution_timeout`), `ObsLoggingMiddleware`, and `register_sys_modules` (new `sys_modules` option on `serve()` / `async_serve()`).
 - **Env prefix** — `APCORE__A2A` (double underscore) → `APCORE_A2A` (single underscore).
+- **`PartConverter`** serializes lists and scalars with compact JSON separators (`,`/`:`) so artifact text is byte-identical to the TypeScript and Rust adapters.
 
 ### Added
 
@@ -40,7 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Config Bus namespace** (§9.13) — new `_config.py` module registers the `apcore-a2a` namespace with env prefix `APCORE_A2A` and defaults for `execution_timeout`, `cors_origins`, `explorer`, `metrics`, `push_notifications`.
 - **New error codes** in `ErrorMapper` — `MODULE_DISABLED` (→ "Module is currently disabled"), `CONFIG_NAMESPACE_DUPLICATE`, `CONFIG_MOUNT_ERROR`, `CONFIG_BIND_ERROR` (→ "Configuration error").
 - **`format()` method** on `ErrorMapper` — implements the `ErrorFormatter` protocol, delegating to `to_jsonrpc_error()`.
-- A2A 1.0 migration covered by the full suite — **282 tests passing**.
+- **Cross-language conformance suite** (`tests/conformance/`) mirroring the shared fixtures, and an Apache-2.0 **`LICENSE`**.
+- A2A 1.0 migration covered by the full suite (incl. conformance) — **332 tests passing**.
 
 ---
 
