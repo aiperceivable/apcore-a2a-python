@@ -81,14 +81,16 @@ class PartConverter:
             return Artifact(artifact_id=artifact_id, parts=[Part(data=ParseDict(output, struct_pb2.Value()))])
 
         if isinstance(output, list):
-            # Serialize lists as JSON rather than Python repr
-            return Artifact(artifact_id=artifact_id, parts=[Part(text=json.dumps(output))])
+            # Serialize lists as compact JSON (no spaces) to byte-match the
+            # TypeScript (JSON.stringify) and Rust (serde_json) adapters; the
+            # default json.dumps separators emit "[1, 2, 3]" which diverges.
+            return Artifact(artifact_id=artifact_id, parts=[Part(text=json.dumps(output, separators=(",", ":")))])
 
         # Any other scalar type: emit a JSON literal to match TS/Rust
         # (e.g. bool -> "true"/"false", int/float -> their JSON form).
         # Fall back to str() only for non-JSON-serializable objects.
         try:
-            text = json.dumps(output)
+            text = json.dumps(output, separators=(",", ":"))
         except TypeError:
             text = str(output)
         return Artifact(artifact_id=artifact_id, parts=[Part(text=text)])

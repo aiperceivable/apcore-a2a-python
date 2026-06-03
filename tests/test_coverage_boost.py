@@ -203,7 +203,7 @@ async def test_jsonrpc_call_raises_a2a_server_error_for_unknown_code(mock_client
     from apcore_a2a.client.exceptions import A2AServerError
 
     client, mock_http = mock_client_with_http
-    error = {"code": -32603, "message": "Internal error"}
+    error = {"code": -32603, "message": "Internal server error"}
     mock_http.post = AsyncMock(return_value=_make_jsonrpc_response(error=error))
     with pytest.raises(A2AServerError):
         await client.send_message({"role": "user", "parts": []})
