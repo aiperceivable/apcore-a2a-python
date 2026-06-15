@@ -14,9 +14,10 @@ from unittest.mock import MagicMock
 
 import pytest
 from a2a.types import AgentCapabilities
+from google.protobuf.json_format import MessageToDict
+
 from apcore_a2a.adapters.agent_card import AgentCardBuilder
 from apcore_a2a.adapters.skill_mapper import SkillMapper
-from google.protobuf.json_format import MessageToDict
 
 from ._spec import load_fixture, partial_match
 

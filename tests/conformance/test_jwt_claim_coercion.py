@@ -13,6 +13,7 @@ from typing import Any
 
 import jwt as pyjwt
 import pytest
+
 from apcore_a2a.auth.jwt import JWTAuthenticator
 
 from ._spec import load_fixture

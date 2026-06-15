@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 from apcore.errors import ErrorCodes, ModuleError
+
 from apcore_a2a.adapters.errors import ErrorMapper
 
 from ._spec import load_fixture

@@ -10,9 +10,10 @@ from typing import Any
 
 import pytest
 from a2a.types import Part
-from apcore_a2a.adapters.parts import PartConverter
 from google.protobuf import struct_pb2
 from google.protobuf.json_format import MessageToDict, ParseDict
+
+from apcore_a2a.adapters.parts import PartConverter
 
 from ._spec import load_fixture, partial_match
 
