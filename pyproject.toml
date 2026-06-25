@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "apcore-a2a"
-version = "0.4.1"
+version = "0.4.2"
 description = "Automatic A2A Protocol Adapter for apcore Module Registry"
 readme = "README.md"
 license = "Apache-2.0"
@@ -26,8 +26,8 @@ classifiers = [
     "Framework :: AsyncIO",
 ]
 dependencies = [
-    "apcore>=0.24.0",
-    "apcore-toolkit>=0.8.1",
+    "apcore>=0.25.0",
+    "apcore-toolkit>=0.9.1",
     "a2a-sdk[http-server]>=1.0.0",
     "starlette>=0.40.0",
     "uvicorn>=0.30.0",
