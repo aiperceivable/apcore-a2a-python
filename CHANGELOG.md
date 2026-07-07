@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-07-07
+
+Patch release. Bumps the required `apcore-toolkit` floor to `0.10.0` (additive annotation-preservation conformance verifier; no breaking changes). No code or API changes; all 332 tests pass unmodified against apcore-toolkit 0.10.0.
+
 ## [0.4.2] - 2026-06-25
 
 Patch release. Bumps the required apcore runtime floor to 0.25.0 and apcore-toolkit to 0.9.1. No code or API changes; all 332 tests pass unmodified against the new runtime.
