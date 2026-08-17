@@ -9,7 +9,6 @@ import warnings
 from dataclasses import dataclass
 from typing import Any
 
-from a2a.server.context import ServerCallContext
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.routes import create_agent_card_routes, create_jsonrpc_routes, create_rest_routes
 from a2a.server.tasks.inmemory_push_notification_config_store import (
@@ -32,6 +31,7 @@ from apcore_a2a.adapters.errors import ErrorMapper
 from apcore_a2a.adapters.parts import PartConverter
 from apcore_a2a.adapters.schema import SchemaConverter
 from apcore_a2a.adapters.skill_mapper import SkillMapper
+from apcore_a2a.server.context import AuthIdentityServerCallContextBuilder, anonymous_context
 from apcore_a2a.server.executor import ApCoreAgentExecutor
 
 logger = logging.getLogger(__name__)
@@ -93,8 +93,10 @@ def _build_health_handler(task_store: Any, registry: Any, metrics: _MetricsState
             with contextlib.suppress(Exception):
                 module_count = len(registry.list())
 
-        # Probe the store — a2a-sdk 1.0 requires a ServerCallContext argument
-        ctx = ServerCallContext()
+        # Probe the store — a2a-sdk 1.0 requires a ServerCallContext argument.
+        # Explicitly the anonymous owner bucket: the probe must not read a
+        # principal's tasks, and the id it asks for exists in no bucket anyway.
+        ctx = anonymous_context()
         try:
             await task_store.get("__health_probe__", ctx)
         except Exception as e:
@@ -189,7 +191,22 @@ class A2AServerFactory:
         metrics: bool = False,
         sys_modules: bool = False,
     ) -> tuple[Starlette, AgentCard]:
-        """Build ASGI app and AgentCard. Returns (app, agent_card)."""
+        """Build ASGI app and AgentCard. Returns (app, agent_card).
+
+        Task scoping: every task-addressed method is scoped to the authenticated
+        principal by a2a-sdk's owner-resolving stores, driven by the
+        ``ServerCallContext`` this factory builds from the authenticated
+        ``Identity``. A supplied ``task_store`` therefore participates in
+        enforcement, not just storage.
+
+        **A custom ``task_store`` that ignores its ``ServerCallContext``
+        argument disables task scoping entirely** — every caller sees every
+        caller's tasks, as before this behaviour existed. a2a-sdk's own
+        ``InMemoryTaskStore`` and ``DatabaseTaskStore`` both scope by
+        ``OwnerResolver``; a third-party store must do the same. Upstream states
+        the requirement as a SHOULD on the ``TaskStore`` contract, so it cannot
+        be enforced here.
+        """
         # C3: cancel_on_disconnect is not used by DefaultRequestHandler; warn when False
         if not cancel_on_disconnect:
             warnings.warn(
@@ -375,9 +392,19 @@ class A2AServerFactory:
         # Serve agent card at both A2A 1.0 path and legacy 0.3.x path for backward compat
         agent_card_routes = create_agent_card_routes(agent_card=agent_card)
         agent_card_routes_legacy = create_agent_card_routes(agent_card=agent_card, card_url="/.well-known/agent.json")
-        rest_routes = create_rest_routes(request_handler=handler)
+        # context_builder: bind the authenticated principal to the ServerCallContext
+        # so a2a-sdk's owner-scoped stores scope every task-addressed method to
+        # its owner. Without it every caller shares the UnauthenticatedUser
+        # bucket and tasks/list returns every caller's tasks.
+        context_builder = AuthIdentityServerCallContextBuilder()
+        rest_routes = create_rest_routes(request_handler=handler, context_builder=context_builder)
         # enable_v0_3_compat: support legacy 0.3.x method names (message/send, tasks/get, etc.)
-        jsonrpc_routes = create_jsonrpc_routes(request_handler=handler, rpc_url="/", enable_v0_3_compat=True)
+        jsonrpc_routes = create_jsonrpc_routes(
+            request_handler=handler,
+            rpc_url="/",
+            context_builder=context_builder,
+            enable_v0_3_compat=True,
+        )
 
         # custom_routes first: REST routes include Mount /{tenant} which catches all paths
         # including /explorer, /health etc. if placed before them.

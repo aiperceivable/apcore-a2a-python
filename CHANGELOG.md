@@ -54,6 +54,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   raises `ConfigError` / `CONFIG_INVALID` for it, which the catch-all already
   masks.
 
+### Security
+
+- **All six task-addressed methods are scoped to the authenticated principal** —
+  `tasks/get` / `tasks/list` (`ListTasks`) / `tasks/cancel` and
+  `tasks/pushNotificationConfig/set|get|delete`. `tasks/list` previously
+  returned every caller's tasks including their output; a task could be read or
+  cancelled by id from any caller; and a principal holding another's task id
+  could redirect that task's terminal `statusUpdate` to a webhook of its
+  choosing, or silently suppress the owner's notifications by deleting their
+  config. Only the unguessability of a UUIDv4 task id stood in the way. Ported
+  from the same fix in apcore-a2a-rust; `aiperceivable/apexe#34`.
+
+  a2a-sdk already had the machinery: `InMemoryTaskStore` and
+  `InMemoryPushNotificationConfigStore` bucket by `OwnerResolver(context)` —
+  default `resolve_user_scope`, i.e. `context.user.user_name` — and
+  `DefaultRequestHandler` loads the task from that context-scoped store before
+  every task-addressed method, raising `TaskNotFoundError` when it is not
+  visible. It was inert because nothing supplied a `context_builder`, so every
+  request carried the default `UnauthenticatedUser`. The factory now passes an
+  `AuthIdentityServerCallContextBuilder` to `create_jsonrpc_routes` and
+  `create_rest_routes`, which resolves the principal from the `Identity` that
+  `AuthMiddleware` publishes on `auth_identity_var`.
+
+  Cross-principal access is masked as `"Task not found"` — byte-identical to an
+  unknown id, so task ids cannot be probed (srs FR-ERR-003). On the A2A 1.0 wire
+  the code is `-32001`; on the v0.3 compat path a2a-sdk wraps every `A2AError`
+  in `InternalError`, so the code degrades to `-32603` while the message stays
+  `"Task not found"`. That is upstream's mapping, not this adapter's, and the
+  responses remain indistinguishable either way.
+
+  Callers with no `Identity` share a single `""` owner bucket, as a2a-sdk's
+  `UnauthenticatedUser` does — that covers both "no authenticator configured"
+  and "an authenticator configured with `require_auth=False` that did not
+  authenticate this request". Single-tenant deployments are unaffected;
+  configuring auth is what turns scoping on, and a permissive-mode deployment
+  gets scoping only between authenticated callers.
+
+  **Behaviour change for a custom `task_store`.** Unlike the Rust binding, which
+  holds ownership in a process-local map beside the store and fails *closed*,
+  ownership here lives inside the store itself. Two consequences follow, and
+  they point in opposite directions:
+
+  - a2a-sdk's `DatabaseTaskStore` carries the owner column, so scoping survives
+    a restart with a persistent store — the caveat the Rust binding had to
+    disclose does not apply, and no ownership map is retained beside the store,
+    so nothing unbounded is introduced either.
+  - **A consumer-supplied `TaskStore` that ignores its `ServerCallContext`
+    argument disables scoping entirely** and fails *open*: every caller sees
+    every caller's tasks, exactly as before. Upstream states the requirement as
+    a SHOULD on the `TaskStore` contract ("implementations SHOULD use ... the
+    authenticated caller's identity to scope data access"), so it cannot be
+    enforced from here. Deployments passing `task_store=` must confirm their
+    store scopes by `OwnerResolver`.
+
+  Not covered: `message/send` and `message/stream` are not task-addressed and
+  are unchanged; `tasks/resubscribe` is routed by the v0.3 compat layer to the
+  same context-scoped handler and inherits the scoping, but has no test here.
+  `tasks/list` under its A2A 0.3 spelling remains `-32601` — a2a-sdk maps
+  neither `tasks/list` (0.3) nor anything but `ListTasks` (1.0) for that method,
+  which is a pre-existing gap unrelated to scoping.
+
 ### Changed
 
 - Required runtime bumped to `apcore >= 0.27.0` (from `>=0.26.0`). All six
