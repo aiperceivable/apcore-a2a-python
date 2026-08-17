@@ -27,6 +27,7 @@ from a2a.types import (
 from google.protobuf.timestamp_pb2 import Timestamp
 
 # Imported at module level — no circular dependency (middleware.py does not import executor.py)
+from apcore_a2a.adapters.errors import carries_caller_detail, sanitize_message
 from apcore_a2a.auth.middleware import auth_identity_var
 
 logger = logging.getLogger(__name__)
@@ -220,7 +221,7 @@ class ApCoreAgentExecutor(AgentExecutor):
             else:
                 logger.exception("Execution failed for task %s skill %s", context.task_id, skill_id)
                 self._notify("working", "failed")
-                await self._fail(context, event_queue, "Internal server error")
+                await self._fail(context, event_queue, self._failure_text(exc))
         finally:
             self._cancel_tokens.pop(context.task_id, None)
 
@@ -355,6 +356,47 @@ class ApCoreAgentExecutor(AgentExecutor):
                 ),
             )
         )
+
+    def _failure_text(self, error: Exception) -> str:
+        """Caller-facing text for a FAILED task status.
+
+        Delegates to the injected ``ErrorMapper``, this package's single
+        error-redaction policy, so the task-status surface classifies exactly
+        like the JSON-RPC surface instead of collapsing every code to one
+        string:
+
+        - internal / unrecognized errors keep the fixed ``"Internal server
+          error"`` (srs FR-ERR-004 / FR-ERR-008, locked by the shared
+          ``error_mapping.json`` and ``streaming_events.json`` fixtures);
+        - ``ACL_DENIED`` stays masked as ``"Task not found"`` (srs FR-ERR-003);
+        - caller-fixable classes (schema validation, invalid input, unknown
+          module) carry their sanitized detail, which srs FR-ERR-002 requires
+          precisely so a caller "can correct their input without guessing".
+
+        For those detail-carrying classes the error's ``ai_guidance`` is
+        appended when apcore supplied one: it exists to tell an agent what to do
+        next, and an A2A caller sees only this status message. It is withheld
+        for every other class, where the message is a fixed per-class string
+        that must stay fixed.
+
+        The gate is :func:`~apcore_a2a.adapters.errors.carries_caller_detail` —
+        the same partition ``ErrorMapper`` itself branches on. Gating on
+        ``error.user_fixable`` instead would be a different partition: six
+        apcore codes are ``user_fixable=True`` yet fall into the mapper's
+        catch-all, so e.g. a ``DEPENDENCY_NOT_FOUND`` failure would send the
+        caller ``"Internal server error (module 'x' requires 'y' >= 2.1; ...)"``
+        — the deliberately-opaque string extended with dependency-graph detail
+        that :func:`~apcore_a2a.adapters.errors.sanitize_message` does not strip
+        (it removes only paths and traceback-shaped lines, not module ids,
+        versions, env-var names or hostnames). ``user_fixable`` is settable
+        per-error by the module author, so any module could widen the fixed
+        string further.
+        """
+        message = str(self._error_mapper.to_jsonrpc_error(error).get("message", ""))
+        guidance = getattr(error, "ai_guidance", None)
+        if carries_caller_detail(error) and isinstance(guidance, str) and guidance.strip():
+            return f"{message} ({sanitize_message(guidance)})"
+        return message
 
     async def _fail(self, context: RequestContext, event_queue: EventQueue, message: str) -> None:
         context_id = context.context_id or context.task_id

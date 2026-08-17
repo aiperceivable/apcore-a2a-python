@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Failed tasks no longer collapse every error to `"Internal server error"`.**
+  `ApCoreAgentExecutor.execute` sent every code except `MODULE_TIMEOUT`,
+  `EXECUTION_CANCELLED` and `APPROVAL_PENDING` to a fixed
+  `"Internal server error"`, so an A2A caller could not tell a rejected argument
+  from a crashed binary from a policy denial. Every apcore input guard —
+  conflicting flags, option injection, control characters, schema validation —
+  arrived as that one string, and `ai_guidance`, which exists to tell an agent
+  what to do next, was computed and dropped.
+
+  The failed-task text now goes through `ErrorMapper`, this package's single
+  redaction policy, so the task-status surface classifies like the JSON-RPC
+  surface. Internal and unrecognized errors keep the fixed string (srs
+  FR-ERR-004 / FR-ERR-008; the shared `error_mapping.json` and
+  `streaming_events.json` fixtures still pass unchanged) and ACL denials stay
+  masked as `"Task not found"` (FR-ERR-003), but caller-fixable failures —
+  schema validation, invalid input, unknown module — carry their sanitized
+  detail plus `ai_guidance` when apcore supplied one. An agent that reads a
+  guard refusal can now correct itself. Ported from the same fix in
+  apcore-a2a-rust; `aiperceivable/apexe#33`.
+
+  `ai_guidance` is gated on exactly those three classes, not on
+  `error.user_fixable`. Six apcore codes carry `user_fixable=True` while
+  mapping to the fixed string (`VERSION_CONSTRAINT_INVALID`,
+  `BINDING_SCHEMA_INFERENCE_FAILED`, `BINDING_SCHEMA_MODE_CONFLICT`,
+  `BINDING_STRICT_SCHEMA_INCOMPATIBLE`, `DEPENDENCY_NOT_FOUND`,
+  `DEPENDENCY_VERSION_MISMATCH`), and `user_fixable` is settable per-error by
+  the module author — so gating on it would let a fixed, deliberately-opaque
+  string be extended with internal detail that `sanitize_message` does not
+  strip (module ids, versions, env-var names, hostnames), and would let any
+  module widen the `ACL_DENIED` mask. `carries_caller_detail` is the gate, and
+  `test_error_mapper_message_policy_matches_to_jsonrpc_error` locks it to
+  `ErrorMapper`'s own branching across every apcore error code.
+- **`SCHEMA_VALIDATION_ERROR` is no longer treated as caller-fixable in every
+  direction.** apcore raises the one code for input *and* output validation, so
+  a module returning the wrong shape reached the caller as `-32602 Invalid
+  params` with apcore's default guidance claiming `"Input validation failed"`
+  and pointing at a `details.errors` field an A2A caller never receives — a
+  server-side defect reported as the caller's fault. Output validation now maps
+  to the fixed internal string. The direction label apcore puts at the front of
+  the message is the only signal available, so that prefix is matched; anything
+  unrecognized (including a module raising the code with its own wording) keeps
+  the caller-facing detail. Config validation needs no arm here: apcore-python
+  raises `ConfigError` / `CONFIG_INVALID` for it, which the catch-all already
+  masks.
+
 ### Changed
 
 - Required runtime bumped to `apcore >= 0.27.0` (from `>=0.26.0`). All six

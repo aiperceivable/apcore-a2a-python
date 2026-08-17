@@ -9,6 +9,7 @@ import pytest
 from a2a.server.events import EventQueue
 from a2a.server.events.in_memory_queue_manager import InMemoryQueueManager
 from a2a.types import Message, Part, Role, TaskState
+from apcore.errors import ErrorCodes, ModuleError
 
 from apcore_a2a.adapters.errors import ErrorMapper
 from apcore_a2a.adapters.parts import PartConverter
@@ -357,3 +358,124 @@ async def test_execute_streams_even_when_apcore_ctx_is_none(mock_registry, monke
     assert len(artifact_events) >= 2
     status_events = [e for e in events if hasattr(e, "status")]
     assert any(e.status.state == TaskState.TASK_STATE_COMPLETED for e in status_events)
+
+
+# ---------------------------------------------------------------------------
+# Failed-task error classification (apexe #33)
+# ---------------------------------------------------------------------------
+
+
+async def _failed_text(apcore_executor, mock_executor, error: Exception) -> str:
+    """Run one failing execution and return the FAILED status message text."""
+    mock_executor.call_async = AsyncMock(side_effect=error)
+    ctx = _make_context(skill_id="image.resize", text='{"width": 800}')
+    queue = await _make_queue()
+    await apcore_executor.execute(ctx, queue)
+    events = await _drain_queue(queue)
+    failed = [e for e in events if hasattr(e, "status") and e.status.state == TaskState.TASK_STATE_FAILED]
+    assert failed, "expected a FAILED status event"
+    return failed[0].status.message.parts[0].text
+
+
+async def test_execute_invalid_input_error_reaches_the_caller(apcore_executor, mock_executor):
+    """srs FR-ERR-002/FR-ERR-006: a caller-fixable failure must carry detail.
+
+    Collapsing it to the generic string leaves an agent unable to tell a bad
+    argument from a crash, which is the whole point of the transport.
+    """
+    err = ModuleError(
+        code=ErrorCodes.GENERAL_INVALID_INPUT,
+        message="Parameters '1' and 'l' cannot be used together",
+    )
+    text = await _failed_text(apcore_executor, mock_executor, err)
+    assert "'1' and 'l' cannot be used together" in text
+
+
+async def test_execute_schema_validation_error_names_the_field(apcore_executor, mock_executor):
+    err = ModuleError(code=ErrorCodes.SCHEMA_VALIDATION_ERROR, message="width: must be integer")
+    text = await _failed_text(apcore_executor, mock_executor, err)
+    assert "width" in text
+
+
+async def test_execute_acl_denied_stays_masked_as_task_not_found(apcore_executor, mock_executor):
+    """srs FR-ERR-003: an ACL denial must not disclose caller, module or denial."""
+    err = ModuleError(code=ErrorCodes.ACL_DENIED, message="caller alice denied module admin.wipe")
+    text = await _failed_text(apcore_executor, mock_executor, err)
+    assert text == "Task not found"
+    assert "alice" not in text
+    assert "admin.wipe" not in text
+
+
+async def test_execute_internal_error_yields_fixed_message(apcore_executor, mock_executor):
+    """srs FR-ERR-004 / FR-ERR-008: internal and unrecognized errors stay fixed."""
+    err = ModuleError(
+        code=ErrorCodes.GENERAL_INTERNAL_ERROR,
+        message="super secret internal detail leaking through",
+    )
+    text = await _failed_text(apcore_executor, mock_executor, err)
+    assert text == "Internal server error"
+
+
+async def test_execute_ai_guidance_is_appended_for_caller_fixable_errors(apcore_executor, mock_executor):
+    """ai_guidance exists to tell an agent what to do next; the caller sees only this."""
+    err = ModuleError(
+        code=ErrorCodes.GENERAL_INVALID_INPUT,
+        message="bad flag combination",
+        ai_guidance="send either -1 or -l, not both",
+    )
+    text = await _failed_text(apcore_executor, mock_executor, err)
+    assert "send either -1 or -l, not both" in text
+
+
+async def test_execute_ai_guidance_is_withheld_for_internal_errors(apcore_executor, mock_executor):
+    """The fixed per-class strings must stay fixed.
+
+    ``DEPENDENCY_NOT_FOUND`` is the case that discriminates: apcore marks it
+    ``user_fixable=True`` while the mapper sends it through the catch-all to
+    "Internal server error", so a ``user_fixable``-based gate would append the
+    guidance verbatim — internal dependency-graph detail (module ids, versions,
+    env-var names, hostnames), none of which ``sanitize_message`` strips.
+    """
+    err = ModuleError(
+        code=ErrorCodes.DEPENDENCY_NOT_FOUND,
+        message="boom",
+        ai_guidance="module 'billing.charge' requires 'vault.secrets' >= 2.1; set VAULT_ADDR",
+    )
+    assert err.user_fixable is True, "precondition for this test"
+    text = await _failed_text(apcore_executor, mock_executor, err)
+    assert text == "Internal server error"
+
+    internal = ModuleError(
+        code=ErrorCodes.GENERAL_INTERNAL_ERROR,
+        message="boom",
+        ai_guidance="inspect /var/log/secret.log",
+    )
+    assert await _failed_text(apcore_executor, mock_executor, internal) == "Internal server error"
+
+
+async def test_execute_ai_guidance_is_withheld_when_a_module_declares_a_masked_error_user_fixable(
+    apcore_executor, mock_executor
+):
+    """``user_fixable`` is author-settable, so gating on it let any module widen a fixed string."""
+    err = ModuleError(
+        code=ErrorCodes.ACL_DENIED,
+        message="caller alice denied admin.wipe",
+        user_fixable=True,
+        ai_guidance="ask an admin to grant you the 'admin.wipe' role",
+    )
+    text = await _failed_text(apcore_executor, mock_executor, err)
+    assert text == "Task not found"
+
+
+async def test_execute_failure_text_does_not_leak_paths_or_tracebacks(apcore_executor, mock_executor):
+    """The redaction that the fixed string used to provide must survive the fix."""
+    err = ModuleError(
+        code=ErrorCodes.GENERAL_INVALID_INPUT,
+        message='bad input at /home/deploy/app/secret.py\nTraceback (most recent call last):\nFile "x.py", line 42',
+        ai_guidance="see /var/log/apcore/internal.log on db-prod-07",
+    )
+    text = await _failed_text(apcore_executor, mock_executor, err)
+    assert "/home/deploy" not in text
+    assert "/var/log" not in text
+    assert "Traceback" not in text
+    assert "line 42" not in text
