@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Required runtime bumped to `apcore >= 0.27.0` (from `>=0.26.0`). All six
+  0.27.0 breaking changes were checked against this adapter; none of them
+  reaches it, and all 332 pre-existing tests pass unmodified against 0.27.0.
+
+  - **`CONFIGURATION_ERROR` renamed to `PIPELINE_CONFIGURATION_ERROR`** — a
+    rename in apcore-rust and apcore-js only. apcore-python's
+    `ConfigurationError` already carried `PIPELINE_CONFIGURATION_ERROR`, so
+    nothing changed on this side. `ErrorMapper` never referenced either code
+    (a config error reaches it through `CONFIG_NAMESPACE_DUPLICATE` /
+    `CONFIG_MOUNT_ERROR` / `CONFIG_BIND_ERROR`, which are untouched).
+  - **`obs.redaction.sensitive_keys` replaces rather than merges the defaults**
+    — an apcore-js fix; apcore-python already behaved this way. The adapter
+    configures no redaction and never constructs a `RedactionConfig`.
+  - **Boolean coercion narrowed to exactly `"true"` / `"false"`** — applies to
+    `SchemaValidator(coerce_types=True)`. The adapter never constructs a
+    `SchemaValidator`; its own `SchemaConverter` translates JSON Schema for the
+    Agent Card and does not coerce values.
+  - **Unknown `pipeline.configure` keys are now a parse error** — the adapter
+    declares no pipeline and calls no `build_strategy_from_config`.
+  - **`_config.strict` rejects undeclared framework keys** — scoped to the
+    `apcore` namespace's own framework sections. The adapter registers its
+    settings under the separate, declared `apcore-a2a` namespace
+    (`_config.py`), which strict mode does not police.
+  - **`after_step` now fires after a recovered step body** — the adapter
+    installs no step middleware. It calls `executor.use(...)` only with
+    apcore's own `ObsLoggingMiddleware` / `ErrorHistoryMiddleware`, which are
+    call middleware, not step middleware.
+
 ## [0.4.4] - 2026-07-14
 
 Patch release. Bumps the required `apcore` floor to `0.26.0` to align the ecosystem on the 0.26.0 governance layer (Execution Policy §7.9, governance events, no-handler fail-loud — additive, no breaking changes). No code or API changes; all 332 tests pass unmodified against apcore 0.26.0.
