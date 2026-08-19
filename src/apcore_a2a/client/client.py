@@ -235,9 +235,7 @@ class A2AClient:
     async def __aexit__(self, *args: object) -> None:
         await self.close()
 
-    async def _jsonrpc_call(
-        self, method: str, params: dict, *, a2a_version: str | None = None
-    ) -> dict:
+    async def _jsonrpc_call(self, method: str, params: dict, *, a2a_version: str | None = None) -> dict:
         """POST JSON-RPC request. Returns result dict or raises typed error.
 
         ``a2a_version`` sets the ``A2A-Version`` header. Both upstream SDKs treat

@@ -288,8 +288,7 @@ async def test_stream_message_raises_on_a_mid_stream_error_frame():
 
     lines = [
         _frame("TASK_STATE_WORKING"),
-        'data: {"jsonrpc":"2.0","id":"req-1",'
-        '"error":{"code":-32001,"message":"Task not found"}}',
+        'data: {"jsonrpc":"2.0","id":"req-1",' '"error":{"code":-32001,"message":"Task not found"}}',
     ]
 
     async def _fake_aiter_lines():
@@ -327,9 +326,7 @@ async def test_stream_message_raises_on_a_mid_stream_error_frame():
 
 async def test_stream_message_skips_keepalive_and_blank_lines():
     """T4: SSE comment lines (": ...") and blank separators carry no event."""
-    events = await _drive_stream(
-        ["", ": keepalive", _frame("TASK_STATE_COMPLETED"), ""]
-    )
+    events = await _drive_stream(["", ": keepalive", _frame("TASK_STATE_COMPLETED"), ""])
 
     assert len(events) == 1
 
