@@ -85,3 +85,9 @@ show_missing = true
 [tool.apdev]
 base_package = "apcore_a2a"
 src_dir = "src"
+
+[tool.ruff.lint.isort]
+# `apcore_a2a` and `tests` are this repository's own packages, so isort must group
+# them apart from third-party imports. Without this ruff reads `apcore_a2a` as
+# third-party and flags the correct grouping as I001.
+known-first-party = ["apcore_a2a", "tests"]
