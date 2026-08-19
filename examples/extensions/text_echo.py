@@ -1,8 +1,7 @@
 """Echo text back — a minimal read-only module for testing."""
 
-from pydantic import BaseModel, Field
-
 from apcore import ModuleAnnotations, ModuleExample
+from pydantic import BaseModel, Field
 
 
 class TextEchoInput(BaseModel):

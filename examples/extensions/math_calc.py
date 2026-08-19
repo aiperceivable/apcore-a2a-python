@@ -1,8 +1,7 @@
 """Basic arithmetic calculator module."""
 
-from pydantic import BaseModel, Field
-
 from apcore import ModuleAnnotations, ModuleExample
+from pydantic import BaseModel, Field
 
 
 class MathCalcInput(BaseModel):

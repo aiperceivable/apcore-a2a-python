@@ -5,7 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] - 2026-08-17
+
+Minor release. Task-addressed methods are now scoped to the authenticated
+principal, and failed tasks no longer collapse every error to a fixed string —
+both from `aiperceivable/apexe` issues #33 and #34. Raises the apcore floor to
+0.27.0. No breaking API change: the storage layer re-exports a2a-sdk's own
+owner-scoped `TaskStore`, which already carried a `ServerCallContext`. 350 tests
+pass.
 
 ### Fixed
 
@@ -53,6 +60,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the caller-facing detail. Config validation needs no arm here: apcore-python
   raises `ConfigError` / `CONFIG_INVALID` for it, which the catch-all already
   masks.
+
+- **Task listing is `ListTasks`, not `tasks/list`.** The bundled client sent
+  `tasks/list`, a name belonging to no A2A version — 1.0 calls it `ListTasks`
+  and 0.3 had no listing method — so `list_tasks()` had always returned
+  `-32601` against this server and against the TypeScript one, and worked only
+  against this project's Rust server, which implemented the invented name. The
+  client now sends `ListTasks` with the `A2A-Version: 1.0` header both upstream
+  SDKs require for 1.0 method names (a request without it is read as v0.3, spec
+  3.6.2). No server-side change: this server was always correct.
+
+  The parameter names were wrong too, which only an end-to-end call could
+  surface: `ListTasksRequest` declares `pageSize` / `pageToken` / `contextId` /
+  `status` / `historyLength`, and has no `limit` field at all — so even with the
+  method name fixed, both SDK-backed servers answered `-32602 Invalid params`.
+  The Rust server had never caught it because it ignores list parameters
+  entirely. `list_tasks(limit=…)` keeps `limit` as the friendly parameter name
+  and sends `pageSize` on the wire.
+
+  The factory test that covered this asserted only `status_code == 200` — and a
+  JSON-RPC error is also a 200, so it passed for as long as the method was
+  unroutable. It now asserts the result.
+
+- **`ruff check` passes again.** Five lint errors had accumulated in `examples/`
+  — three unsorted import blocks, one `datetime.timezone.utc` that `UP017` wants
+  as `datetime.UTC`, and an over-long line in `examples/run.py`'s docstring. The
+  curl example on that line was left as it is on purpose: `message/send` is the
+  A2A 0.3 method name, so its payload must be in 0.3 shape (`role: "user"`, a
+  `kind`-tagged part). Verified — the 1.0 shape is rejected with `-32600` on that
+  method. A comment now says so, plus a note that `metadata.skillId` is needed to
+  reach a module.
+
+- **`stream_message` stops on a terminal task state instead of a `final` flag,
+  and yields the event rather than the JSON-RPC envelope.** `final` is an A2A 0.3
+  construct that 1.0 removed, so the old check could never fire against a 1.0
+  server — the stream only ended when the connection closed. It also yielded
+  each frame whole (`{jsonrpc, id, result}`) while the docstring promised the
+  event, so callers had to reach into `result` themselves. Both now match the
+  Rust client, which already did this: the envelope is unwrapped, and a
+  `TASK_STATE_COMPLETED` / `FAILED` / `CANCELED` / `REJECTED` status ends the
+  stream after being yielded. Keepalive comment lines are skipped explicitly.
+
+  The tests that covered this had pinned the 0.3 shapes (`{"kind":"status",
+  "final":true}`) and passed regardless, so they were rewritten against 1.0
+  frames — including one that asserts a stray `final` does *not* end a stream.
+
+- **A JSON-RPC error frame on an SSE stream now raises instead of being yielded
+  as an event.** Upstream reports a mid-stream failure as its own frame, tagged
+  `event: error` with a JSON-RPC error response in `data:`. Envelope unwrapping
+  only looks for `result`, so such a frame fell through and was handed to the
+  caller as though it were an event — a caller reading `statusUpdate` saw
+  nothing and the failure vanished, while the non-streaming path raised for a
+  byte-identical payload. Both paths now share the same error mapping, so a
+  `-32001` frame produces `TaskNotFoundError` wherever it arrives. Events
+  received before the error frame are still delivered.
 
 ### Security
 

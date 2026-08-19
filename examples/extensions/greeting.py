@@ -1,10 +1,9 @@
 """Generate a personalized greeting message."""
 
-from datetime import datetime, timezone
-
-from pydantic import BaseModel, Field
+from datetime import UTC, datetime
 
 from apcore import ModuleAnnotations, ModuleExample
+from pydantic import BaseModel, Field
 
 
 class GreetingInput(BaseModel):
@@ -40,5 +39,5 @@ class Greeting:
         template = self._STYLES.get(style, self._STYLES["friendly"])
         return {
             "message": template.format(name=name),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }

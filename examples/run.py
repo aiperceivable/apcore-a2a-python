@@ -12,10 +12,16 @@ Then test with curl:
     # Agent card (always accessible; 0.3 alias /.well-known/agent.json also served)
     curl http://localhost:8000/.well-known/agent-card.json
 
-    # Send a message (JSON-RPC)
+    # Send a message (JSON-RPC). `message/send` is the A2A 0.3 method name, so the
+    # payload must be in 0.3 shape too: `role: "user"` and a `kind`-tagged part.
+    # The 1.0 shape (`ROLE_USER`, a flat `{"text": ...}` part) is rejected with
+    # -32600 on this method — 1.0 names it `SendMessage` and needs A2A-Version: 1.0.
+    # Add "metadata":{"skillId":"<module id>"} to route to a module; without it the
+    # server answers with a FAILED task. The Explorer lists the available ids.
     curl -X POST http://localhost:8000/ \\
       -H "Content-Type: application/json" \\
-      -d '{"jsonrpc":"2.0","id":1,"method":"message/send","params":{"message":{"role":"user","messageId":"msg-1","parts":[{"kind":"text","text":"Hello!"}]}}}'
+      -d '{"jsonrpc":"2.0","id":1,"method":"message/send","params":{"message":{
+        "role":"user","messageId":"msg-1","parts":[{"kind":"text","text":"Hello!"}]}}}'
 """
 
 import os

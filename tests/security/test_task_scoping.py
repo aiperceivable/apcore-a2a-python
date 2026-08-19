@@ -5,7 +5,7 @@ a2a-sdk scopes task storage by an owner resolved from the ``ServerCallContext``
 ``DefaultRequestHandler`` loads the task from that context-scoped store before
 every task-addressed method. Nothing supplied a ``context_builder``, so every
 request carried the default ``UnauthenticatedUser`` and every caller shared one
-owner bucket: ``tasks/list`` returned every caller's tasks including their full
+owner bucket: ``ListTasks`` returned every caller's tasks including their full
 stdout, and any principal holding another's task id could read it, cancel it,
 or redirect its terminal ``statusUpdate`` to a webhook of its choosing.
 """

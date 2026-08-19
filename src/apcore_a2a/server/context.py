@@ -6,12 +6,12 @@ a2a-sdk scopes every task-addressed operation by an *owner* resolved from the
 ``OwnerResolver(context)``, whose default ``resolve_user_scope`` returns
 ``context.user.user_name``, and ``DefaultRequestHandler`` loads the task from
 that context-scoped store before ``tasks/get``, ``tasks/cancel``,
-``tasks/list`` and all four ``tasks/pushNotificationConfig/*`` methods.
+``ListTasks`` and all four ``tasks/pushNotificationConfig/*`` methods.
 
 That machinery was inert here because nothing supplied a ``context_builder``:
 every request built a ``ServerCallContext`` with the default
 ``UnauthenticatedUser`` (``user_name == ""``), so every caller shared one owner
-bucket. ``tasks/list`` returned every caller's tasks including their full
+bucket. ``ListTasks`` returned every caller's tasks including their full
 stdout, any principal could read or cancel another's task by id, and any
 principal could point another's terminal ``statusUpdate`` at a webhook of its
 choosing or delete the owner's push config. Only the unguessability of a UUIDv4

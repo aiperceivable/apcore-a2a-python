@@ -395,7 +395,7 @@ class A2AServerFactory:
         # context_builder: bind the authenticated principal to the ServerCallContext
         # so a2a-sdk's owner-scoped stores scope every task-addressed method to
         # its owner. Without it every caller shares the UnauthenticatedUser
-        # bucket and tasks/list returns every caller's tasks.
+        # bucket and ListTasks returns every caller's tasks.
         context_builder = AuthIdentityServerCallContextBuilder()
         rest_routes = create_rest_routes(request_handler=handler, context_builder=context_builder)
         # enable_v0_3_compat: support legacy 0.3.x method names (message/send, tasks/get, etc.)

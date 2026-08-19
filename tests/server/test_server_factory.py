@@ -85,9 +85,20 @@ def test_app_has_jsonrpc_route(mock_registry, mock_executor):
     client = TestClient(app)
     import json
 
-    body = json.dumps({"jsonrpc": "2.0", "id": "1", "method": "tasks/list", "params": {}})
-    response = client.post("/", content=body, headers={"Content-Type": "application/json"})
+    # `ListTasks` is the A2A 1.0 name, and needs the version header: a request
+    # without it is treated as v0.3 (spec 3.6.2), which has no listing method.
+    # Asserting the result, not just HTTP 200 — a JSON-RPC error is also a 200,
+    # so the old assertion passed even while the method was unroutable.
+    body = json.dumps({"jsonrpc": "2.0", "id": "1", "method": "ListTasks", "params": {}})
+    response = client.post(
+        "/",
+        content=body,
+        headers={"Content-Type": "application/json", "A2A-Version": "1.0"},
+    )
     assert response.status_code == 200
+    payload = response.json()
+    assert "error" not in payload, payload
+    assert isinstance(payload["result"]["tasks"], list)
 
 
 def test_agent_card_has_skills(mock_registry, mock_executor, simple_descriptor):

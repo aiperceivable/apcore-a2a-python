@@ -191,17 +191,10 @@ def test_no_auth_no_header():
 # --- stream_message --- (T4)
 
 
-async def test_stream_message_yields_events_and_terminates_on_final():
-    """T4: stream_message yields events and stops when final=true is received."""
+async def _drive_stream(lines: list[str]) -> list[dict]:
+    """Run ``stream_message`` against a canned SSE body and collect what it yields."""
     from unittest.mock import MagicMock, patch
 
-    # Build fake SSE lines: two events, second has final=true
-    lines = [
-        'data: {"type": "TaskStatusUpdateEvent", "taskId": "t1", "final": false}',
-        'data: {"type": "TaskStatusUpdateEvent", "taskId": "t1", "final": true}',
-        'data: {"type": "TaskStatusUpdateEvent", "taskId": "t1", "final": false}',  # should not be yielded
-    ]
-
     async def _fake_aiter_lines():
         for line in lines:
             yield line
@@ -225,50 +218,120 @@ async def test_stream_message_yields_events_and_terminates_on_final():
         mock_cls.return_value = mock_inst
 
         client = A2AClient("http://localhost:8000")
-        events = []
-        async for event in client.stream_message({"role": "user", "parts": []}):
-            events.append(event)
-
-    assert len(events) == 2
-    assert events[-1]["final"] is True
+        return [event async for event in client.stream_message({"role": "user", "parts": []})]
 
 
-async def test_stream_message_terminates_on_final_in_result_envelope():
-    """T4: stream_message stops when final=true is nested inside a result envelope."""
+def _frame(state: str) -> str:
+    """One A2A 1.0 SSE frame: a JSON-RPC response carrying a statusUpdate."""
+    return (
+        'data: {"jsonrpc":"2.0","id":"req-1","result":{"statusUpdate":'
+        f'{{"taskId":"t1","status":{{"state":"{state}"}}}}}}}}'
+    )
 
-    lines = [
-        'data: {"jsonrpc":"2.0","id":"1","result":{"type":"TaskStatusUpdateEvent","final":true}}',
-    ]
 
-    async def _fake_aiter_lines():
-        for line in lines:
-            yield line
-
-    mock_response = MagicMock()
-    mock_response.aiter_lines = _fake_aiter_lines
-
-    def _fake_stream(*args, **kwargs):
-        class _CM:
-            async def __aenter__(self):
-                return mock_response
-
-            async def __aexit__(self, *exc):
-                pass
-
-        return _CM()
-
-    with patch("httpx.AsyncClient") as mock_cls:
-        mock_inst = MagicMock()
-        mock_inst.stream = _fake_stream
-        mock_cls.return_value = mock_inst
-
-        client = A2AClient("http://localhost:8000")
-        events = []
-        async for event in client.stream_message({"role": "user", "parts": []}):
-            events.append(event)
+async def test_stream_message_unwraps_the_jsonrpc_envelope():
+    """T4: each frame is a JSON-RPC response; the event under `result` is yielded."""
+    events = await _drive_stream([_frame("TASK_STATE_WORKING")])
 
     assert len(events) == 1
-    assert events[0]["result"]["final"] is True
+    # The envelope is gone — callers get the event, as the docstring promises.
+    assert "jsonrpc" not in events[0]
+    assert events[0]["statusUpdate"]["status"]["state"] == "TASK_STATE_WORKING"
+
+
+async def test_stream_message_stops_at_a_terminal_status():
+    """T4: a terminal TASK_STATE_* ends the stream, and is itself yielded."""
+    events = await _drive_stream(
+        [
+            _frame("TASK_STATE_SUBMITTED"),
+            _frame("TASK_STATE_WORKING"),
+            _frame("TASK_STATE_COMPLETED"),
+            _frame("TASK_STATE_WORKING"),  # after the terminal one: must not appear
+        ]
+    )
+
+    states = [e["statusUpdate"]["status"]["state"] for e in events]
+    assert states == ["TASK_STATE_SUBMITTED", "TASK_STATE_WORKING", "TASK_STATE_COMPLETED"]
+
+
+async def test_stream_message_ignores_the_removed_final_flag():
+    """T4: `final` is an A2A 0.3 construct — 1.0 removed it, so it must not stop the stream.
+
+    The previous implementation keyed on `final` alone, which no 1.0 server ever
+    sends, so it never terminated early; and a stray `final` must not terminate
+    early either.
+    """
+    stray_final = (
+        'data: {"jsonrpc":"2.0","id":"req-1","result":{"statusUpdate":'
+        '{"taskId":"t1","final":true,"status":{"state":"TASK_STATE_WORKING"}}}}'
+    )
+    events = await _drive_stream([stray_final, _frame("TASK_STATE_COMPLETED")])
+
+    assert len(events) == 2, "a `final` flag must not end the stream on its own"
+
+
+async def test_stream_message_raises_on_a_mid_stream_error_frame():
+    """T4: a JSON-RPC error frame ends the stream by raising, not by yielding.
+
+    Upstream reports a mid-stream failure as its own frame (tagged
+    ``event: error``). Unwrapping only looks for ``result``, so before this the
+    frame was handed to the caller as if it were an event and the failure was
+    lost — while the non-streaming path raised for the same payload. The error
+    is mapped exactly as there, so this is a ``TaskNotFoundError``, not a
+    generic one.
+    """
+    from unittest.mock import MagicMock, patch
+
+    import pytest
+
+    from apcore_a2a.client.exceptions import TaskNotFoundError
+
+    lines = [
+        _frame("TASK_STATE_WORKING"),
+        'data: {"jsonrpc":"2.0","id":"req-1",'
+        '"error":{"code":-32001,"message":"Task not found"}}',
+    ]
+
+    async def _fake_aiter_lines():
+        for line in lines:
+            yield line
+
+    mock_response = MagicMock()
+    mock_response.aiter_lines = _fake_aiter_lines
+
+    def _fake_stream(*args, **kwargs):
+        class _CM:
+            async def __aenter__(self):
+                return mock_response
+
+            async def __aexit__(self, *exc):
+                pass
+
+        return _CM()
+
+    with patch("httpx.AsyncClient") as mock_cls:
+        mock_inst = MagicMock()
+        mock_inst.stream = _fake_stream
+        mock_cls.return_value = mock_inst
+
+        client = A2AClient("http://localhost:8000")
+        seen = []
+        with pytest.raises(TaskNotFoundError):
+            async for event in client.stream_message({"role": "user", "parts": []}):
+                seen.append(event)
+
+    # Events before the error frame still reached the caller.
+    assert len(seen) == 1
+    assert seen[0]["statusUpdate"]["status"]["state"] == "TASK_STATE_WORKING"
+
+
+async def test_stream_message_skips_keepalive_and_blank_lines():
+    """T4: SSE comment lines (": ...") and blank separators carry no event."""
+    events = await _drive_stream(
+        ["", ": keepalive", _frame("TASK_STATE_COMPLETED"), ""]
+    )
+
+    assert len(events) == 1
 
 
 async def test_stream_message_raises_on_request_error():

@@ -160,7 +160,7 @@ def test_metrics_requests_counter():
             {
                 "jsonrpc": "2.0",
                 "id": f"req-{i}",
-                "method": "tasks/list",
+                "method": "ListTasks",
                 "params": {},
             }
         )
