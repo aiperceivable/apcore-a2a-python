@@ -8,6 +8,63 @@ from a2a.types import AgentSkill
 
 from apcore_a2a.adapters.schema import SchemaConverter
 
+# The four behavioral annotations promoted onto the A2A wire, with the tag each
+# becomes. Order is fixed so the card is byte-identical across the three
+# bindings (srs FR-SKL-004 criterion 8).
+_ANNOTATION_TAGS: tuple[tuple[str, str], ...] = (
+    ("readonly", "apcore:readonly"),
+    ("destructive", "apcore:destructive"),
+    ("idempotent", "apcore:idempotent"),
+    ("requires_approval", "apcore:requires-approval"),
+)
+
+
+def _append_annotation_tags(tags: list[str], descriptor: Any) -> None:
+    """Append apcore's behavioral annotations to a skill's tags (srs FR-SKL-004).
+
+    A2A 1.0 ``AgentSkill`` is ``{id, name, description, tags, examples,
+    input_modes, output_modes, security_requirements}`` — there is no
+    ``extensions`` and no ``metadata`` member, and here the type is generated
+    from the A2A protobuf schema, so a vendor field cannot be added at all.
+    ``tags`` is the only carrier that exists. The ``apcore:`` prefix keeps these
+    out of the module's own flat tag namespace, where a user tag named
+    ``destructive`` would otherwise be indistinguishable from the annotation.
+
+    Without this the Agent Card carried enough for a caller to *construct* a call
+    and not enough to judge whether making it is safe. It is also what makes
+    retry semantics usable: ``retryable`` is a property of the error, but whether
+    a retry is safe is a property of the operation, and a timeout is retryable
+    for a read and dangerous for a non-idempotent mutation.
+
+    Only ``True`` flags are emitted, matching how the apcore MCP binding maps the
+    same annotations onto optional ``readOnlyHint`` / ``destructiveHint`` /
+    ``idempotentHint``. Absence means "not asserted", never "asserted False".
+    """
+    annotations = getattr(descriptor, "annotations", None)
+    if annotations is None:
+        return
+    for field, tag in _ANNOTATION_TAGS:
+        value = annotations.get(field) if isinstance(annotations, dict) else getattr(annotations, field, None)
+        if value and tag not in tags:
+            tags.append(tag)
+
+
+def requires_approval(descriptor: Any) -> bool:
+    """Whether a module is gated behind human approval.
+
+    Used by the Agent Card builder to withhold the skill from the public card
+    (srs FR-AGC-003) and restore it on the extended one (srs FR-AGC-004).
+    """
+    annotations = getattr(descriptor, "annotations", None)
+    if annotations is None:
+        return False
+    value = (
+        annotations.get("requires_approval")
+        if isinstance(annotations, dict)
+        else getattr(annotations, "requires_approval", None)
+    )
+    return bool(value)
+
 
 class SkillMapper:
     """Converts apcore ModuleDescriptor to a2a.types.AgentSkill."""
@@ -46,6 +103,7 @@ class SkillMapper:
             skill_description = f"{skill_description}\n\nGuidance: {guidance}"
 
         resolved_tags: list[str] = list(display.get("tags") or []) or list(getattr(descriptor, "tags", []) or [])
+        _append_annotation_tags(resolved_tags, descriptor)
 
         return AgentSkill(
             id=descriptor.module_id,

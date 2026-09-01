@@ -49,6 +49,17 @@ class IdentityUser(User):
     def user_name(self) -> str:
         return str(self._identity.id)
 
+    @property
+    def identity(self) -> Any:
+        """The wrapped apcore ``Identity``.
+
+        The extended Agent Card filters skills against the caller's own identity
+        (srs FR-AGC-004), and an ACL rule's ``conditions`` block reads
+        ``identity_type`` and ``roles`` — none of which survive the reduction to
+        ``user_name``.
+        """
+        return self._identity
+
 
 class AuthIdentityServerCallContextBuilder(DefaultServerCallContextBuilder):
     """Builds a ``ServerCallContext`` carrying the authenticated principal.
@@ -81,3 +92,14 @@ def anonymous_context() -> ServerCallContext:
     an authenticated principal's tasks.
     """
     return ServerCallContext(user=UnauthenticatedUser())
+
+
+def identity_of(context: Any) -> Any | None:
+    """The apcore ``Identity`` behind a ``ServerCallContext``, if authenticated.
+
+    Returns ``None`` for ``UnauthenticatedUser`` — the same value
+    :func:`~apcore_a2a.adapters.card_visibility.allowed_skill_ids` treats as the
+    anonymous principal.
+    """
+    user = getattr(context, "user", None)
+    return getattr(user, "identity", None)

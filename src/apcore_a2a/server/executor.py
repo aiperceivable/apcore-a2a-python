@@ -27,7 +27,7 @@ from a2a.types import (
 from google.protobuf.timestamp_pb2 import Timestamp
 
 # Imported at module level — no circular dependency (middleware.py does not import executor.py)
-from apcore_a2a.adapters.errors import carries_caller_detail, sanitize_message
+from apcore_a2a.adapters.errors import GOVERNANCE_REFUSAL_CODES, carries_caller_detail, sanitize_message
 from apcore_a2a.auth.middleware import auth_identity_var
 
 logger = logging.getLogger(__name__)
@@ -216,8 +216,21 @@ class ApCoreAgentExecutor(AgentExecutor):
                 self._notify("working", "canceled")
                 await self._emit_canceled(context, event_queue, "Execution cancelled")
             elif code == "APPROVAL_PENDING":
+                # A resumable pause, not a refusal: the message carries the
+                # approval_id the caller resumes with (srs FR-EXE-002). Must not
+                # be swept in with the governance codes below — `rejected` is
+                # terminal, so re-coding it would end the conversation.
                 self._notify("working", "input_required")
                 await self._input_required(context, event_queue, str(exc))
+            elif code in GOVERNANCE_REFUSAL_CODES:
+                # A2A 1.0 defines `rejected` as terminal, and a policy refusal is
+                # what it describes (srs FR-ERR-012). `failed` said only
+                # "something broke", which for a refusal is both wrong and an
+                # invitation to retry. This is the surface that matters on
+                # message/send, where the response is a JSON-RPC `result` and the
+                # error code never reaches the caller at all.
+                self._notify("working", "rejected")
+                await self._reject(context, event_queue, self._failure_text(exc))
             else:
                 logger.exception("Execution failed for task %s skill %s", context.task_id, skill_id)
                 self._notify("working", "failed")
@@ -394,7 +407,8 @@ class ApCoreAgentExecutor(AgentExecutor):
         """
         message = str(self._error_mapper.to_jsonrpc_error(error).get("message", ""))
         guidance = getattr(error, "ai_guidance", None)
-        if carries_caller_detail(error) and isinstance(guidance, str) and guidance.strip():
+        disclose = getattr(self._error_mapper, "disclose_refusal_reason", False)
+        if carries_caller_detail(error, disclose) and isinstance(guidance, str) and guidance.strip():
             return f"{message} ({sanitize_message(guidance)})"
         return message
 
@@ -406,6 +420,20 @@ class ApCoreAgentExecutor(AgentExecutor):
                 context_id=context_id,
                 status=_make_status(
                     TaskState.TASK_STATE_FAILED,
+                    _text_message(message),
+                ),
+            )
+        )
+
+    async def _reject(self, context: RequestContext, event_queue: EventQueue, message: str) -> None:
+        """Emit REJECTED status for a governance refusal (srs FR-ERR-012)."""
+        context_id = context.context_id or context.task_id
+        await event_queue.enqueue_event(
+            TaskStatusUpdateEvent(
+                task_id=context.task_id,
+                context_id=context_id,
+                status=_make_status(
+                    TaskState.TASK_STATE_REJECTED,
                     _text_message(message),
                 ),
             )

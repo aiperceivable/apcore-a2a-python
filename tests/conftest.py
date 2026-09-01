@@ -195,6 +195,13 @@ def mock_executor():
     executor.call_async = AsyncMock(return_value={"result": "ok"})
     executor.registry = MagicMock()
     executor.registry.list.return_value = ["image.resize"]
+    # No ACL configured — the common single-tenant case. Spelled out because a
+    # bare MagicMock answers `hasattr(executor, "acl")` with a mock that also
+    # answers `check`/`check_access`, so `card_visibility.executor_acl` would
+    # take it for a real ACL and (correctly) fail closed on its unreadable
+    # verdict, emptying every card in this file.
+    executor.acl = None
+    executor._acl = None
     return executor
 
 

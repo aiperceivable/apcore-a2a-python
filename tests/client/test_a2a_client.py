@@ -6,12 +6,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from apcore_a2a.client.client import A2AClient
+from apcore_a2a.client.client import A2AClient, _raise_jsonrpc_error
 from apcore_a2a.client.exceptions import (
     A2AClientError,
     A2AConnectionError,
     A2ADiscoveryError,
     A2AServerError,
+    AccessDeniedError,
+    ApprovalDeniedError,
+    ApprovalTimeoutError,
+    GovernanceRefusedError,
     TaskNotCancelableError,
     TaskNotFoundError,
 )
@@ -288,7 +292,7 @@ async def test_stream_message_raises_on_a_mid_stream_error_frame():
 
     lines = [
         _frame("TASK_STATE_WORKING"),
-        'data: {"jsonrpc":"2.0","id":"req-1",' '"error":{"code":-32001,"message":"Task not found"}}',
+        'data: {"jsonrpc":"2.0","id":"req-1","error":{"code":-32001,"message":"Task not found"}}',
     ]
 
     async def _fake_aiter_lines():
@@ -347,3 +351,43 @@ async def test_stream_message_raises_on_request_error():
         with pytest.raises(A2AConnectionError):
             async for _ in client.stream_message({"role": "user", "parts": []}):
                 pass
+
+
+# ---------------------------------------------------------------------------
+# Governance refusals — srs FR-ERR-003 / FR-ERR-009 / FR-ERR-010
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        (-32040, AccessDeniedError),
+        (-32041, ApprovalDeniedError),
+        (-32042, ApprovalTimeoutError),
+    ],
+)
+def test_governance_codes_raise_typed_errors_not_the_server_catch_all(code, expected):
+    """A refusal is not a transient failure. Left as A2AServerError it reads as
+    "the server broke, retry it" — which is the reading the server side of this
+    change exists to stop."""
+    with pytest.raises(expected) as exc_info:
+        _raise_jsonrpc_error({"code": code, "message": "some reason"})
+    assert isinstance(exc_info.value, GovernanceRefusedError)
+    assert exc_info.value.code == code
+
+
+def test_an_access_denial_is_not_reported_as_task_not_found():
+    """The whole point of moving off -32001: these must not collapse into one
+    client-side class, because their correct responses are opposite."""
+    with pytest.raises(AccessDeniedError):
+        _raise_jsonrpc_error({"code": -32040, "message": "Access denied"})
+    with pytest.raises(TaskNotFoundError):
+        _raise_jsonrpc_error({"code": -32001, "message": "Task not found"})
+
+
+def test_a_disclosed_reason_survives_onto_the_exception():
+    """With disclose_refusal_reason on, the server's message is the whole value
+    of the opt-in — it must not be replaced by the class default."""
+    with pytest.raises(AccessDeniedError) as exc_info:
+        _raise_jsonrpc_error({"code": -32040, "message": "Access denied: caller 'svc' cannot access 'admin.wipe'"})
+    assert "admin.wipe" in str(exc_info.value)

@@ -7,6 +7,10 @@ from apcore_a2a.client.exceptions import (
     A2AConnectionError,
     A2ADiscoveryError,
     A2AServerError,
+    AccessDeniedError,
+    ApprovalDeniedError,
+    ApprovalTimeoutError,
+    GovernanceRefusedError,
     TaskNotCancelableError,
     TaskNotFoundError,
 )
@@ -20,4 +24,8 @@ __all__ = [
     "A2AServerError",
     "TaskNotFoundError",
     "TaskNotCancelableError",
+    "GovernanceRefusedError",
+    "AccessDeniedError",
+    "ApprovalDeniedError",
+    "ApprovalTimeoutError",
 ]

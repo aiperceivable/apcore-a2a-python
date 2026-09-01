@@ -13,6 +13,9 @@ from apcore_a2a.client.card_fetcher import AgentCardFetcher
 from apcore_a2a.client.exceptions import (
     A2AConnectionError,
     A2AServerError,
+    AccessDeniedError,
+    ApprovalDeniedError,
+    ApprovalTimeoutError,
     TaskNotCancelableError,
     TaskNotFoundError,
 )
@@ -22,10 +25,23 @@ _JSONRPC_ERRORS = {
     -32002: TaskNotCancelableError,
 }
 
+#: Governance refusal codes (srs FR-ERR-003 / FR-ERR-009 / FR-ERR-010). Kept
+#: separate from ``_JSONRPC_ERRORS`` because these classes take the server's
+#: message: with ``disclose_refusal_reason`` enabled it carries the actual
+#: reason, which is the whole value of the opt-in.
+_GOVERNANCE_ERRORS = {
+    -32040: AccessDeniedError,
+    -32041: ApprovalDeniedError,
+    -32042: ApprovalTimeoutError,
+}
+
 
 def _raise_jsonrpc_error(error: dict) -> None:
     code = error.get("code", -32603)
     message = error.get("message", "Server error")
+    governance = _GOVERNANCE_ERRORS.get(code)
+    if governance is not None:
+        raise governance(message)
     exc_class = _JSONRPC_ERRORS.get(code, A2AServerError)
     if exc_class is TaskNotFoundError:
         raise TaskNotFoundError()

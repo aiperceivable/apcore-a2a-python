@@ -15,15 +15,65 @@ logger = logging.getLogger(__name__)
 _CODE_METHOD_NOT_FOUND = -32601  # Skill/module not found
 _CODE_INVALID_PARAMS = -32602  # Schema validation / invalid input
 _CODE_INTERNAL_ERROR = -32603  # Internal / timeout / safety errors
-_CODE_TASK_NOT_FOUND = -32001  # ACL denied (masked as "not found")
+_CODE_TASK_NOT_FOUND = -32001  # Unknown task id, or a task owned by another principal
+
+# Governance refusal codes (srs FR-ERR-003 / FR-ERR-009 / FR-ERR-010).
+#
+# A2A 1.0 reserves -32001..-32009; JSON-RPC 2.0 leaves -32000..-32099 to the
+# implementation. These three sit above A2A's reserved block, with room for it
+# to grow, and are the "JSON-RPC custom error" A2A §13.2 names as the example
+# for this binding.
+#
+# apcore distinguishes these three refusals from each other and from every other
+# failure. Collapsing them onto -32001 (which means "unknown or non-owned task
+# id") or -32603 (which every agent reads as "retry me") told the caller a
+# *different* failure had happened, one whose correct response is the opposite
+# of the real one.
+_CODE_ACCESS_DENIED = -32040
+_CODE_APPROVAL_DENIED = -32041
+_CODE_APPROVAL_TIMEOUT = -32042
+
+# The three governance codes, with the fixed message each reports by default.
+# Ordered dict rather than a set: the message is part of the mapping.
+_GOVERNANCE_REFUSALS: dict[str, str] = {
+    ErrorCodes.ACL_DENIED: "Access denied",
+    ErrorCodes.APPROVAL_DENIED: "Approval denied",
+    ErrorCodes.APPROVAL_TIMEOUT: "Approval timed out",
+}
+
+# Public alias for the server layer, which needs the same partition to decide
+# TASK_STATE_REJECTED (srs FR-ERR-012) without re-deriving it.
+GOVERNANCE_REFUSAL_CODES: frozenset[str] = frozenset(_GOVERNANCE_REFUSALS)
+
+_GOVERNANCE_CODES: dict[str, int] = {
+    ErrorCodes.ACL_DENIED: _CODE_ACCESS_DENIED,
+    ErrorCodes.APPROVAL_DENIED: _CODE_APPROVAL_DENIED,
+    ErrorCodes.APPROVAL_TIMEOUT: _CODE_APPROVAL_TIMEOUT,
+}
 
 
 class ErrorMapper:
     """Maps apcore exceptions to A2A JSON-RPC error dicts.
 
-    Security note: ACL errors are masked; internal errors never expose
-    file paths, caller identity, or stack traces to the caller.
+    Security note: a governance refusal conveys its *class* and suppresses its
+    *detail*; internal errors never expose file paths, caller identity, or stack
+    traces to the caller.
     """
+
+    def __init__(self, *, disclose_refusal_reason: bool = False) -> None:
+        """Args:
+        disclose_refusal_reason: Forward apcore's own message for the three
+            governance refusal codes instead of the fixed per-class string
+            (srs FR-ERR-011). Off by default. The code never changes with the
+            flag — what a refusal *is* does not depend on how much a deployment
+            chooses to say about it.
+        """
+        self._disclose_refusal_reason = disclose_refusal_reason
+
+    @property
+    def disclose_refusal_reason(self) -> bool:
+        """Whether governance refusals forward apcore's own reason."""
+        return self._disclose_refusal_reason
 
     def format(self, error: Exception, context: object = None) -> dict[str, Any]:
         """ErrorFormatter protocol implementation for apcore ErrorFormatterRegistry.
@@ -89,9 +139,21 @@ class ErrorMapper:
             description = self._sanitize_message(getattr(error, "message", str(error)))
             return {"code": _CODE_INVALID_PARAMS, "message": f"Invalid input: {description}"}
 
-        if error_code == ErrorCodes.ACL_DENIED:
-            # Mask: don't reveal that the resource exists, user identity, etc.
-            return {"code": _CODE_TASK_NOT_FOUND, "message": "Task not found"}
+        if error_code in _GOVERNANCE_REFUSALS:
+            # The A2A spec §13.2 MUST NOT forbids revealing *the existence of a
+            # resource*, not the *class* of failure. A fixed "Access denied" /
+            # "Approval denied" / "Approval timed out" names no caller, target,
+            # approver or rule, so it discloses nothing — a caller that named a
+            # skill already held that id — while still telling an agent to stop
+            # rather than retry.
+            #
+            # APPROVAL_PENDING is deliberately absent: it is a resumable pause
+            # carrying the approval_id the caller resumes with, handled by the
+            # executor before it ever reaches here (srs FR-EXE-002).
+            return {
+                "code": _GOVERNANCE_CODES[error_code],
+                "message": self._refusal_message(error, error_code),
+            }
 
         if error_code == ErrorCodes.MODULE_TIMEOUT:
             return {"code": _CODE_INTERNAL_ERROR, "message": "Execution timeout"}
@@ -121,6 +183,21 @@ class ErrorMapper:
 
         # Unknown apcore error code
         return {"code": _CODE_INTERNAL_ERROR, "message": "Internal server error"}
+
+    def _refusal_message(self, error: Exception, error_code: str) -> str:
+        """Caller-facing message for a governance refusal.
+
+        Default: the fixed per-class string. With ``disclose_refusal_reason``
+        (srs FR-ERR-011): apcore's own message, through the same sanitizer every
+        other forwarded message goes through. An empty or whitespace-only apcore
+        message falls back to the fixed string rather than sending the caller
+        nothing.
+        """
+        fixed = _GOVERNANCE_REFUSALS[error_code]
+        if not self._disclose_refusal_reason:
+            return fixed
+        disclosed = sanitize_message(getattr(error, "message", str(error)))
+        return disclosed if disclosed.strip() else fixed
 
     def _sanitize_message(self, message: str) -> str:
         """Strip file paths, traceback lines, and truncate to 500 characters."""
@@ -159,7 +236,7 @@ def is_server_side_schema_error(message: str) -> bool:
     return message.startswith(_SERVER_SIDE_SCHEMA_PREFIXES)
 
 
-def carries_caller_detail(error: Exception) -> bool:
+def carries_caller_detail(error: Exception, disclose_refusal_reason: bool = False) -> bool:
     """Whether :meth:`ErrorMapper.to_jsonrpc_error` forwards this error's own message.
 
     This is the partition that decides whether a message may be *widened* — with
@@ -175,15 +252,25 @@ def carries_caller_detail(error: Exception) -> bool:
     per-error by the module author, which would let any module widen any fixed
     per-class string at will, including the ``ACL_DENIED`` mask.
 
+    The three governance codes (``ACL_DENIED``, ``APPROVAL_DENIED``,
+    ``APPROVAL_TIMEOUT``) are in this partition only when
+    ``disclose_refusal_reason`` is set — the same flag the mapper branches on, so
+    the two surfaces agree under either setting.
+
     ``test_error_mapper_message_policy_matches_to_jsonrpc_error`` locks this to
     the branching in :meth:`ErrorMapper._handle_apcore_error` across every apcore
-    error code, so the two cannot drift.
+    error code and both flag values, so the two cannot drift.
     """
     error_code = getattr(error, "code", None)
     if error_code in (ErrorCodes.MODULE_NOT_FOUND, ErrorCodes.GENERAL_INVALID_INPUT):
         return True
     if error_code == ErrorCodes.SCHEMA_VALIDATION_ERROR:
         return not is_server_side_schema_error(getattr(error, "message", str(error)))
+    # The three governance codes move into and out of this partition with the
+    # flag, so the task-status surface forwards exactly what the JSON-RPC surface
+    # does under either setting (srs FR-ERR-011 criterion 4).
+    if error_code in _GOVERNANCE_REFUSALS:
+        return disclose_refusal_reason
     return False
 
 

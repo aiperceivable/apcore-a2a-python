@@ -122,10 +122,17 @@ class AgentCardBuilder:
         *,
         base_card: AgentCard,
     ) -> AgentCard:
-        """Build an extended AgentCard for authenticated users.
+        """Build the base extended AgentCard (srs FR-AGC-004).
 
-        Returns a deep copy of the base card. Override in a subclass to include
-        additional skill metadata available only to authenticated callers.
+        Returns a copy of ``base_card`` — which the factory passes as the
+        **full** card, not the public one. The per-caller narrowing happens in
+        the ``extended_card_modifier`` the factory installs, because
+        ``DefaultRequestHandler.extended_agent_card`` is a static message and
+        the answer to "what may you call" depends on who is asking.
+
+        This used to receive the public card and return it verbatim, so a client
+        that authenticated and asked for more saw exactly what it had already
+        been served.
         """
         extended = AgentCard()
         extended.CopyFrom(base_card)

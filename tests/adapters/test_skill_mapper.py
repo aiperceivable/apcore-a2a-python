@@ -33,8 +33,30 @@ def test_description_preserved(mapper, simple_descriptor):
 
 
 def test_tags_preserved(mapper, simple_descriptor):
+    """The module's own tags stay first and in order; annotations are appended."""
     skill = mapper.to_skill(simple_descriptor)
-    assert skill.tags == ["image", "transform"]
+    assert skill.tags[:2] == ["image", "transform"]
+
+
+def test_annotations_reach_the_wire_as_namespaced_tags(mapper, simple_descriptor):
+    """srs FR-SKL-004. A2A 1.0 AgentSkill has no extensions and no metadata
+    member — and here the type is generated from the A2A protobuf schema — so
+    tags is the only carrier that exists."""
+    skill = mapper.to_skill(simple_descriptor)  # readonly=True, idempotent=True
+    assert list(skill.tags) == ["image", "transform", "apcore:readonly", "apcore:idempotent"]
+
+
+def test_annotation_tag_order_is_fixed(mapper, destructive_descriptor):
+    """Fixed order so the card is byte-identical across the three bindings."""
+    skill = mapper.to_skill(destructive_descriptor)  # destructive + requires_approval
+    assert list(skill.tags) == ["file", "dangerous", "apcore:destructive", "apcore:requires-approval"]
+
+
+def test_unset_annotations_emit_no_tags(mapper, no_annotations_descriptor):
+    """Absence means "not asserted", never "asserted False" — matching how the
+    apcore MCP binding maps the same annotations onto optional hints."""
+    skill = mapper.to_skill(no_annotations_descriptor)
+    assert [t for t in skill.tags if t.startswith("apcore:")] == []
 
 
 def test_input_modes_object_schema(mapper, simple_descriptor):

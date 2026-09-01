@@ -365,16 +365,26 @@ async def test_execute_streams_even_when_apcore_ctx_is_none(mock_registry, monke
 # ---------------------------------------------------------------------------
 
 
-async def _failed_text(apcore_executor, mock_executor, error: Exception) -> str:
-    """Run one failing execution and return the FAILED status message text."""
+async def _terminal_status(apcore_executor, mock_executor, error: Exception, state) -> str:
+    """Run one failing execution and return the terminal status message text."""
     mock_executor.call_async = AsyncMock(side_effect=error)
     ctx = _make_context(skill_id="image.resize", text='{"width": 800}')
     queue = await _make_queue()
     await apcore_executor.execute(ctx, queue)
     events = await _drain_queue(queue)
-    failed = [e for e in events if hasattr(e, "status") and e.status.state == TaskState.TASK_STATE_FAILED]
-    assert failed, "expected a FAILED status event"
-    return failed[0].status.message.parts[0].text
+    matching = [e for e in events if hasattr(e, "status") and e.status.state == state]
+    assert matching, f"expected a {state} status event, got {[getattr(e, 'status', None) for e in events]}"
+    return matching[0].status.message.parts[0].text
+
+
+async def _failed_text(apcore_executor, mock_executor, error: Exception) -> str:
+    """Run one failing execution and return the FAILED status message text."""
+    return await _terminal_status(apcore_executor, mock_executor, error, TaskState.TASK_STATE_FAILED)
+
+
+async def _rejected_text(apcore_executor, mock_executor, error: Exception) -> str:
+    """Run one refused execution and return the REJECTED status message text."""
+    return await _terminal_status(apcore_executor, mock_executor, error, TaskState.TASK_STATE_REJECTED)
 
 
 async def test_execute_invalid_input_error_reaches_the_caller(apcore_executor, mock_executor):
@@ -397,13 +407,50 @@ async def test_execute_schema_validation_error_names_the_field(apcore_executor, 
     assert "width" in text
 
 
-async def test_execute_acl_denied_stays_masked_as_task_not_found(apcore_executor, mock_executor):
-    """srs FR-ERR-003: an ACL denial must not disclose caller, module or denial."""
+async def test_execute_acl_denial_is_rejected_and_says_access_denied(apcore_executor, mock_executor):
+    """srs FR-ERR-003 / FR-ERR-012: the class of refusal reaches the caller, the detail does not.
+
+    This is the surface that matters on ``message/send``, where the response is
+    a JSON-RPC ``result`` and the error code never reaches the caller at all —
+    the state and this message are the whole payload it receives.
+    """
     err = ModuleError(code=ErrorCodes.ACL_DENIED, message="caller alice denied module admin.wipe")
-    text = await _failed_text(apcore_executor, mock_executor, err)
-    assert text == "Task not found"
+    text = await _rejected_text(apcore_executor, mock_executor, err)
+    assert text == "Access denied"
+    # "Task not found" sent an agent back to retry the one thing that was fine.
+    assert text != "Task not found"
     assert "alice" not in text
     assert "admin.wipe" not in text
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        (ErrorCodes.APPROVAL_DENIED, "Approval denied"),
+        (ErrorCodes.APPROVAL_TIMEOUT, "Approval timed out"),
+    ],
+)
+async def test_execute_approval_refusals_are_rejected_not_failed(apcore_executor, mock_executor, code, expected):
+    """srs FR-ERR-009 / FR-ERR-010. These used to reach the caller as -32603
+    "Internal server error" — the canonical *retryable* failure, for a call a
+    human had explicitly refused."""
+    err = ModuleError(code=code, message="approval 7f3c1e for alice@example.com")
+    text = await _rejected_text(apcore_executor, mock_executor, err)
+    assert text == expected
+    assert text != "Internal server error"
+    assert "alice@example.com" not in text
+    assert "7f3c1e" not in text
+
+
+async def test_execute_approval_pending_stays_a_resumable_pause(apcore_executor, mock_executor):
+    """The one approval code that must NOT move (srs FR-EXE-002).
+
+    It carries the ``approval_id`` the caller resumes with, and ``rejected`` is
+    terminal — re-coding it would end the conversation.
+    """
+    err = ModuleError(code=ErrorCodes.APPROVAL_PENDING, message="Approval required: approval_id=7f3c1e")
+    text = await _terminal_status(apcore_executor, mock_executor, err, TaskState.TASK_STATE_INPUT_REQUIRED)
+    assert "approval_id=7f3c1e" in text, "the message must reach the caller verbatim"
 
 
 async def test_execute_internal_error_yields_fixed_message(apcore_executor, mock_executor):
@@ -463,8 +510,8 @@ async def test_execute_ai_guidance_is_withheld_when_a_module_declares_a_masked_e
         user_fixable=True,
         ai_guidance="ask an admin to grant you the 'admin.wipe' role",
     )
-    text = await _failed_text(apcore_executor, mock_executor, err)
-    assert text == "Task not found"
+    text = await _rejected_text(apcore_executor, mock_executor, err)
+    assert text == "Access denied"
 
 
 async def test_execute_failure_text_does_not_leak_paths_or_tracebacks(apcore_executor, mock_executor):

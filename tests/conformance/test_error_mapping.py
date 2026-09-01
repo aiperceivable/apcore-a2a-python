@@ -23,8 +23,15 @@ _CODE_BY_NAME = {
     "ModuleNotFoundError": ErrorCodes.MODULE_NOT_FOUND,
     "SchemaValidationError": ErrorCodes.SCHEMA_VALIDATION_ERROR,
     "ACLDeniedError": ErrorCodes.ACL_DENIED,
+    "ApprovalDeniedError": ErrorCodes.APPROVAL_DENIED,
+    "ApprovalTimeoutError": ErrorCodes.APPROVAL_TIMEOUT,
+    "ApprovalPendingError": ErrorCodes.APPROVAL_PENDING,
     "ModuleExecuteError": ErrorCodes.MODULE_EXECUTE_ERROR,
 }
+
+# Cases about the server's tasks/* path are not reconstructible as an apcore
+# exception; the task-scoping tests assert those.
+_MAPPER_CASES = [c for c in _FIXTURE["error_cases"] if c.get("surface") != "server"]
 
 
 def _build_exception(spec: dict[str, Any]) -> Exception:
@@ -45,8 +52,8 @@ def _build_exception(spec: dict[str, Any]) -> Exception:
 
 @pytest.mark.parametrize(
     "case",
-    _FIXTURE["error_cases"],
-    ids=[c["id"] for c in _FIXTURE["error_cases"]],
+    _MAPPER_CASES,
+    ids=[c["id"] for c in _MAPPER_CASES],
 )
 def test_error_mapping(case: dict[str, Any]) -> None:
     rpc = ErrorMapper().to_jsonrpc_error(_build_exception(case["input"]))

@@ -27,11 +27,18 @@ from starlette.routing import Route
 
 from apcore_a2a._config import register_a2a_namespace
 from apcore_a2a.adapters.agent_card import AgentCardBuilder
+from apcore_a2a.adapters.card_visibility import build_extended_card, build_public_card
 from apcore_a2a.adapters.errors import ErrorMapper
 from apcore_a2a.adapters.parts import PartConverter
 from apcore_a2a.adapters.schema import SchemaConverter
 from apcore_a2a.adapters.skill_mapper import SkillMapper
-from apcore_a2a.server.context import AuthIdentityServerCallContextBuilder, anonymous_context
+from apcore_a2a.server.context import (
+    AuthIdentityServerCallContextBuilder,
+    anonymous_context,
+)
+from apcore_a2a.server.context import (
+    identity_of as _identity_of,
+)
 from apcore_a2a.server.executor import ApCoreAgentExecutor
 
 logger = logging.getLogger(__name__)
@@ -160,6 +167,8 @@ class A2AServerFactory:
         self._schema_converter = SchemaConverter()
         self._skill_mapper = SkillMapper(self._schema_converter)
         self._agent_card_builder = AgentCardBuilder(self._skill_mapper)
+        # Replaced in create() once `disclose_refusal_reason` is known; kept
+        # here so the attribute exists for callers that inspect the factory.
         self._error_mapper = ErrorMapper()
         self._part_converter = PartConverter(self._schema_converter)
 
@@ -190,6 +199,7 @@ class A2AServerFactory:
         explorer_prefix: str = "/explorer",
         metrics: bool = False,
         sys_modules: bool = False,
+        disclose_refusal_reason: bool = False,
     ) -> tuple[Starlette, AgentCard]:
         """Build ASGI app and AgentCard. Returns (app, agent_card).
 
@@ -223,6 +233,10 @@ class A2AServerFactory:
         self._version = version
         self._url = url
         self._registry = registry
+        # srs FR-ERR-011: the mapper decides whether a governance refusal
+        # forwards apcore's own reason or the fixed per-class string. Off by
+        # default; the *class* of refusal is conveyed either way.
+        self._error_mapper = ErrorMapper(disclose_refusal_reason=disclose_refusal_reason)
 
         # Build security schemes — RAISES on failure (no silent except)
         security_schemes = None
@@ -264,7 +278,9 @@ class A2AServerFactory:
                 logger.warning("register_sys_modules failed — continuing without sys modules", exc_info=True)
 
         # Build AgentCard AFTER sys_modules so sys.* skills are included when enabled.
-        agent_card = self._agent_card_builder.build(
+        # This is the FULL card; the public and extended views are derived from
+        # it below (srs FR-AGC-003 / FR-AGC-004).
+        full_card = self._agent_card_builder.build(
             registry,
             name=name,
             description=description,
@@ -273,6 +289,13 @@ class A2AServerFactory:
             capabilities=capabilities,
             security_schemes=security_schemes,
         )
+
+        # The public card is filtered for the anonymous principal once, here,
+        # rather than per request on an auth-exempt route. Before this, every
+        # registered skill was advertised to any anonymous caller — id, name,
+        # description and full input schema — with the ACL consulted nowhere.
+        agent_card = build_public_card(full_card, executor, registry)
+        self._agent_card = agent_card
 
         # C1: Build metrics state early so it can be wired into the executor
         metrics_state = _MetricsState()
@@ -312,10 +335,23 @@ class A2AServerFactory:
         # Build push config store
         push_config_store = InMemoryPushNotificationConfigStore() if push_notifications else None
 
-        # Build extended card
+        # Build extended card (srs FR-AGC-004). It carries the FULL skill set,
+        # narrowed per authenticated identity by `extended_card_modifier` on each
+        # request — the a2a-sdk hook that makes a per-caller card possible at all,
+        # since `extended_agent_card` itself is a static message.
+        #
+        # `build_extended` used to return `CopyFrom(base_card)`: a verbatim copy,
+        # so a client that authenticated and asked for more saw exactly what it
+        # had already been served.
         extended_card = None
+        extended_card_modifier = None
         if auth is not None:
-            extended_card = self._agent_card_builder.build_extended(base_card=agent_card)
+            extended_card = self._agent_card_builder.build_extended(base_card=full_card)
+
+            async def extended_card_modifier(  # type: ignore[misc]
+                card: Any, context: Any
+            ) -> Any:
+                return build_extended_card(card, executor, _identity_of(context))
 
         # Build DefaultRequestHandler (a2a-sdk 1.0: agent_card is required 3rd arg)
         handler = DefaultRequestHandler(
@@ -324,6 +360,7 @@ class A2AServerFactory:
             agent_card=agent_card,
             push_config_store=push_config_store,
             extended_agent_card=extended_card,
+            extended_card_modifier=extended_card_modifier,
         )
 
         # Build custom routes (health, optional metrics, optional explorer)

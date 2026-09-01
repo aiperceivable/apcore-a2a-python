@@ -25,18 +25,20 @@ _FIXTURE = load_fixture("agent_card.json")
 
 
 class _Descriptor:
-    def __init__(self, module_id: str, description: str) -> None:
-        self.module_id = module_id
-        self.description = description
-        self.tags: list[str] = []
+    def __init__(self, spec: dict[str, Any]) -> None:
+        self.module_id = spec["module_id"]
+        self.description = spec["description"]
+        self.tags: list[str] = list(spec.get("tags") or [])
         self.examples: list[Any] = []
         self.input_schema: dict[str, Any] = {}
         self.output_schema: dict[str, Any] = {}
-        self.annotations = None
+        # A plain dict, which is what `_append_annotation_tags` reads when the
+        # descriptor came from a source that does not build ModuleAnnotations.
+        self.annotations = spec.get("annotations")
 
 
 def _registry_for(modules: list[dict[str, Any]]) -> Any:
-    descriptors = {m["module_id"]: _Descriptor(m["module_id"], m["description"]) for m in modules}
+    descriptors = {m["module_id"]: _Descriptor(m) for m in modules}
     registry = MagicMock()
     registry.list.return_value = list(descriptors.keys())
     registry.get_definition.side_effect = descriptors.get
@@ -50,6 +52,12 @@ def _registry_for(modules: list[dict[str, Any]]) -> Any:
 )
 def test_agent_card_shape(case: dict[str, Any]) -> None:
     spec = case["input"]
+    if "card_variant" in spec:
+        # Cases carrying card_variant / acl_rules / identity exercise the
+        # serve() layer (the anonymous-principal filter needs the executor's
+        # ACL), not AgentCardBuilder.build. tests/server/test_card_visibility.py
+        # asserts those against a real app.
+        pytest.skip("serve()-layer case; covered by test_card_visibility.py")
     builder = AgentCardBuilder(SkillMapper())
     card = builder.build(
         _registry_for(spec["modules"]),
@@ -71,6 +79,20 @@ def test_agent_card_shape(case: dict[str, Any]) -> None:
 
     if "expected_skill_count" in case:
         assert len(actual.get("skills", [])) == case["expected_skill_count"], f"[{case['id']}] skill count"
+
+    # srs FR-SKL-004: apcore's behavioral annotations reach the wire as
+    # namespaced tags, in a fixed order, after the module's own tags.
+    for skill_id, expected_tags in case.get("expected_skill_tags", {}).items():
+        skill = next((s for s in actual.get("skills", []) if s.get("id") == skill_id), None)
+        assert skill is not None, f"[{case['id']}] no skill {skill_id!r} on the card"
+        # proto3 omits an empty repeated field on the wire; absent == [].
+        assert skill.get("tags", []) == expected_tags, f"[{case['id']}] tags for {skill_id}"
+
+    if "expected_skill_ids" in case:
+        # Which skills appear is the contract; the order the registry
+        # enumerates them in is not.
+        actual_ids = sorted(s.get("id") for s in actual.get("skills", []))
+        assert actual_ids == sorted(case["expected_skill_ids"]), f"[{case['id']}] skill ids"
 
     if case.get("expected_security_requirements_empty"):
         # proto3 omits an empty repeated field on the wire; absent == empty.

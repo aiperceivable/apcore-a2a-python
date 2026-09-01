@@ -5,6 +5,121 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-09-01
+
+Resolves `aiperceivable/apcore-a2a` issues #2, #3 and #4, tracked here as #1.
+One principle runs through all three: **apcore already draws these distinctions,
+and a transport binding's job is to convey them, not to flatten them.**
+
+Suite: 382 tests (was 353).
+Runtime floor moves to apcore 0.28.0 / apcore-toolkit 0.10.2 (`apcore>=0.28.0` / `apcore-toolkit>=0.10.2`).
+
+### Changed
+
+- **A governance refusal is reported as itself** (spec srs FR-ERR-003, FR-ERR-009,
+  FR-ERR-010, FR-ERR-012). `ACL_DENIED` moves from `-32001 "Task not found"` to
+  `-32040 "Access denied"`; `APPROVAL_DENIED` and `APPROVAL_TIMEOUT` leave the
+  `-32603` catch-all for `-32041 "Approval denied"` and `-32042 "Approval timed
+  out"`. All three now reach `TASK_STATE_REJECTED` instead of
+  `TASK_STATE_FAILED`, which matters most on `message/send`, where the response
+  is a JSON-RPC `result` and the error code never reaches the caller at all —
+  the state and its message are the entire payload.
+
+  The old mapping told an agent a *different* failure had happened, one whose
+  correct response was the opposite of the real one: `"Task not found"` sends a
+  caller back to re-fetch or re-send the one thing that was fine, and
+  `"Internal server error"` is the canonical *retryable* failure — for a call a
+  human had explicitly refused. A2A §13.2's MUST NOT forbids revealing *the
+  existence of a resource*, not the *class* of failure, so a fixed
+  `"Access denied"` naming no caller, target or rule satisfies it while still
+  telling an agent to stop.
+
+  `-32001` now means only "unknown task id, or a task owned by another
+  principal". `APPROVAL_PENDING` is untouched: still a resumable
+  `TASK_STATE_INPUT_REQUIRED` carrying its message verbatim, which is how a
+  caller learns the approval id it resumes with.
+
+  **Breaking** for callers that matched `-32001` or the literal `"Task not
+  found"` to detect an authorization failure.
+
+- **The public Agent Card shows what an anonymous caller could actually invoke**
+  (spec srs FR-AGC-003): every registered skill, minus those the ACL denies to
+  the anonymous principal, minus those annotated `requires_approval`. The filter
+  resolves one identity, so it runs once at card-build time — never per request
+  on the auth-exempt `/.well-known/` route.
+
+- **The extended Agent Card carries what the authenticated caller may invoke**
+  (spec srs FR-AGC-004), including `requires_approval` skills, resolved against
+  that caller's own identity.
+
+- **`capabilities.extendedAgentCard` is no longer derived from `auth != null`
+  alone** (spec srs FR-AGC-002, FR-AGC-006): this binding advertises the
+  capability only because it now serves it.
+
+- **Card visibility reads apcore's two governance axes apart** (spec srs
+  FR-AGC-003 "The two axes" and criterion 11; FR-AGC-004 criteria 2 and 10).
+  apcore 0.28.0 (`PROTOCOL_SPEC` §6.1.6) gave an ACL rule an `approval: required`
+  field orthogonal to `effect`, so one check now resolves two independent results
+  — may this caller reach this target, and must this call be put to a human — and
+  made the legacy boolean `ACL.check` **fail closed** on the second. This binding
+  filtered its cards on that boolean. Left alone, a skill the ACL *allows* the
+  caller but gates behind a human would have silently vanished from the
+  **extended** card too: a refusal the ACL never issued, and the caller left
+  unable to learn that a capability it holds exists at all.
+
+  Every card filter now reads `ACL.check_access` and filters on the
+  authorization axis alone. The approval axis decides only *which surface*: it
+  joins the module's `requires_approval` annotation as the second source the
+  public card subtracts, composed by union exactly as apcore §6.9 composes them.
+  Since 0.28.0 the annotation describes the *module*, not the call (apcore#110),
+  so reading it alone would leave on the public card a skill an anonymous caller
+  cannot in fact just call.
+
+  The bug this closes was one line: `card_visibility.allowed_skill_ids` called
+  `acl.check(...)`. `ACL.check_access` returns an `AccessDecision`, and the filter
+  now reads `decision.access` for visibility and `decision.approval_required` only
+  to decide which surface. Public API gains `skill_access()`; `allowed_skill_ids()`
+  stays and now means the authorization axis alone.
+
+### Added
+
+- **apcore's behavioral annotations reach the wire** (spec srs FR-SKL-004):
+  `readonly`, `destructive`, `idempotent` and `requires_approval` are emitted as
+  namespaced entries in the standard `tags` field — `apcore:readonly`,
+  `apcore:destructive`, `apcore:idempotent`, `apcore:requires-approval` — in
+  that fixed order, appended after the module's own tags and de-duplicated
+  against them. Only `true` flags are emitted.
+
+  A2A 1.0 `AgentSkill` has no `extensions` and no `metadata` member, so `tags`
+  is the only carrier that exists. Without them the card carried enough to
+  *construct* a call and not enough to judge whether making it is safe — and
+  retry semantics were unusable, since `retryable` is a property of the error
+  while whether a retry is safe is a property of the operation.
+
+- **Governance refusal errors on the client**, so a refusal is not reported as
+  a transient server failure.
+
+- `AccessDeniedError`, `ApprovalDeniedError`, `ApprovalTimeoutError` and their
+  base `GovernanceRefusedError`, exported from `apcore_a2a.client`.
+
+- **`serve(..., disclose_refusal_reason=False)`** (spec srs FR-ERR-011):
+  forwards apcore's own sanitized reason for the three governance codes instead
+  of the fixed per-class string. The code never changes with the flag; only the
+  message does.
+
+- `apcore_a2a.adapters.card_visibility` — `build_public_card` /
+  `build_extended_card` / `allowed_skill_ids`, the shared filter behind both
+  card surfaces.
+
+### Fixed
+
+- **`AgentCardBuilder.build_extended` no longer returns a verbatim copy.** It
+  now receives the full card, and the per-caller narrowing happens in the
+  `extended_card_modifier` the factory installs — `DefaultRequestHandler`'s
+  `extended_agent_card` is a static message, and the answer to "what may you
+  call" depends on who is asking. A client that authenticated and asked for more
+  previously saw exactly what it had already been served.
+
 ## [0.5.0] - 2026-08-17
 
 Minor release. Task-addressed methods are now scoped to the authenticated

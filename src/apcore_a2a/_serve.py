@@ -96,6 +96,7 @@ async def async_serve(
     execution_timeout: int | None = None,
     metrics: bool = False,
     sys_modules: bool = False,
+    disclose_refusal_reason: bool = False,
 ) -> Starlette:
     """Build and return a Starlette ASGI app for an A2A agent.
 
@@ -183,6 +184,7 @@ async def async_serve(
         explorer_prefix=explorer_prefix,
         metrics=metrics,
         sys_modules=sys_modules,
+        disclose_refusal_reason=disclose_refusal_reason,
     )
 
     # Step 7: Return the Starlette app
@@ -210,6 +212,7 @@ def serve(
     log_level: str | None = None,
     metrics: bool = False,
     sys_modules: bool = False,
+    disclose_refusal_reason: bool = False,
 ) -> None:
     """Launch an A2A agent server (blocking).
 
@@ -236,6 +239,14 @@ def serve(
         execution_timeout: Task execution timeout in seconds. When omitted,
             resolved via apcore Config (apcore-a2a.execution_timeout, including
             the APCORE_A2A_EXECUTION_TIMEOUT environment override).
+        disclose_refusal_reason: Forward apcore's own reason for a governance
+            refusal (ACL denial, approval denial, approval timeout) instead of
+            the fixed per-class string. Off by default. The *class* of refusal
+            is conveyed either way — each has its own JSON-RPC code and a
+            ``rejected`` task state; this decides only whether the *detail*
+            travels with it. A server whose callers are its own agents wants it
+            on: that is what the apcore MCP binding reports today. A server
+            facing untrusted callers keeps the default.
         log_level: Optional log level string (e.g. "info", "debug").
 
     Raises:
@@ -269,6 +280,7 @@ def serve(
             execution_timeout=execution_timeout,
             metrics=metrics,
             sys_modules=sys_modules,
+            disclose_refusal_reason=disclose_refusal_reason,
         )
         config = uvicorn.Config(
             app,

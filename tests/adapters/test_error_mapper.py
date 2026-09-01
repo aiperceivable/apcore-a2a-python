@@ -47,13 +47,63 @@ def test_schema_validation_error(mapper):
     assert result["code"] == -32602
 
 
-def test_acl_denied_masked(mapper):
+def test_acl_denial_reports_access_denied_not_task_not_found(mapper):
+    """srs FR-ERR-003. -32001 means "unknown or non-owned task id"; spending it on
+    authorization made those two indistinguishable, and their correct client
+    responses are opposite."""
     err = FakeApCoreError("ACL_DENIED", "Access denied for user: alice")
     result = mapper.to_jsonrpc_error(err)
-    assert result["code"] == -32001
-    # Message should NOT reveal user or module info
+    assert result["code"] == -32040
+    assert result["message"] == "Access denied"
+    assert result["code"] != -32001
+    # The class of refusal is conveyed; the detail is not.
     assert "alice" not in result["message"]
     assert "alice" not in str(result.get("data", ""))
+
+
+@pytest.mark.parametrize(
+    ("code", "expected_code", "expected_message"),
+    [
+        ("APPROVAL_DENIED", -32041, "Approval denied"),
+        ("APPROVAL_TIMEOUT", -32042, "Approval timed out"),
+    ],
+)
+def test_approval_refusals_leave_the_retryable_catch_all(mapper, code, expected_code, expected_message):
+    """srs FR-ERR-009 / FR-ERR-010. On -32603 these read as "the server broke,
+    back off and retry" — for a call a human explicitly refused."""
+    err = FakeApCoreError(code, "approval 7f3c1e denied by alice@example.com")
+    result = mapper.to_jsonrpc_error(err)
+    assert result["code"] == expected_code
+    assert result["message"] == expected_message
+    assert result["code"] != -32603
+    assert "alice@example.com" not in result["message"]
+    assert "7f3c1e" not in result["message"]
+
+
+def test_approval_pending_is_not_swept_into_the_governance_block(mapper):
+    """A resumable pause, not a refusal. The executor intercepts it before the
+    mapper's message is used; re-coding it would make the pause terminal."""
+    err = FakeApCoreError("APPROVAL_PENDING", "Approval required: approval_id=7f3c1e")
+    result = mapper.to_jsonrpc_error(err)
+    assert result["code"] == -32603
+    assert result["code"] not in (-32040, -32041, -32042)
+
+
+def test_disclose_refusal_reason_widens_the_message_but_never_the_code():
+    """srs FR-ERR-011. A deployment chooses how much detail travels; what the
+    refusal *is* does not depend on that choice."""
+    err = FakeApCoreError("ACL_DENIED", "caller 'svc-db-writer' cannot access 'admin.users.delete'")
+    masked = ErrorMapper().to_jsonrpc_error(err)
+    disclosed = ErrorMapper(disclose_refusal_reason=True).to_jsonrpc_error(err)
+    assert masked["message"] == "Access denied"
+    assert masked["code"] == disclosed["code"]
+    assert "svc-db-writer" in disclosed["message"]
+
+
+def test_disclose_refusal_reason_falls_back_when_apcore_says_nothing():
+    err = FakeApCoreError("ACL_DENIED", "   ")
+    result = ErrorMapper(disclose_refusal_reason=True).to_jsonrpc_error(err)
+    assert result["message"] == "Access denied", "an empty apcore message must not reach the caller"
 
 
 def test_unknown_apcore_error(mapper):
