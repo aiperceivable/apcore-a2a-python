@@ -162,6 +162,45 @@ class _RequestCountMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+def _warn_on_unprotected_control_surface(executor: Any) -> None:
+    """Warn when ``system.control.*`` is served with nothing gating it (srs FR-AGC-007).
+
+    Reads apcore's ``Executor.governance_state()`` (apcore ``PROTOCOL_SPEC``
+    §6.6.5), which answers "is a gate *engaging*" rather than "is an ACL
+    *attached*" — the ACL and approval gates are pipeline *steps*, and the
+    ``internal``, ``testing`` and ``minimal`` strategies remove them, so an
+    executor can hold an ACL that no step ever consults. Re-deriving the question
+    from the raw ``acl`` / ``approval_handler`` attributes would answer the wrong
+    one.
+
+    Withholding ``system.*`` from the public card (FR-AGC-003 criterion 12)
+    removes the surface from *discovery*, not from *dispatch*: apcore's approval
+    gate warns once and continues when no ``ApprovalHandler`` is configured, so
+    the write modules stay callable. This warning exists so the card rule cannot
+    be mistaken for a fix to that. apcore deliberately made the accessor a pure
+    read and left the reaction to the adapter; warning is the reaction, and a
+    failure to read it must never stop a server from starting.
+    """
+    accessor = getattr(executor, "governance_state", None)
+    if not callable(accessor):
+        return
+    try:
+        state = accessor()
+    except Exception:  # pragma: no cover - a diagnostic must never break startup
+        logger.debug("governance_state() raised; skipping the control-surface check", exc_info=True)
+        return
+    # `is True` and not truthiness: a test double answers every attribute with a
+    # truthy stand-in, and a diagnostic that cries wolf in every suite is one
+    # nobody reads.
+    if getattr(state, "unprotected_control_surface", None) is True:
+        logger.warning(
+            "apcore system.control.* modules are registered and no built-in governance gate "
+            "engages for them (no ACL, no ApprovalHandler, or a strategy without the gates). "
+            "They are withheld from the public Agent Card but remain callable. Configure an "
+            "acl/ directory, an ApprovalHandler, or ExecutionPolicy(strict=True)."
+        )
+
+
 class A2AServerFactory:
     def __init__(self) -> None:
         self._schema_converter = SchemaConverter()
@@ -245,6 +284,14 @@ class A2AServerFactory:
         self._security_schemes = security_schemes
 
         # Build capabilities (a2a-sdk 1.0: no state_transition_history field)
+        # `extended_agent_card` is advertised only when this binding actually
+        # serves it (srs FR-AGC-006). With an authenticator configured the
+        # extended card and its `extended_card_modifier` are both built below and
+        # handed to `DefaultRequestHandler`, which is what routes the endpoint —
+        # so the flag and the behaviour agree. Without one both stay `None`, the
+        # endpoint is unrouted, and this stays false. A client is entitled to read
+        # the flag and call the method (A2A §3.2.x), so advertising an unserved
+        # capability is worse than not advertising it.
         capabilities = AgentCapabilities(
             streaming=True,
             push_notifications=push_notifications,
@@ -252,30 +299,52 @@ class A2AServerFactory:
         )
         self._capabilities = capabilities
 
-        # P1-B: register sys.* modules BEFORE building the AgentCard so they appear in skills.
+        # P1-B: register system.* modules BEFORE building the AgentCard so they
+        # are subject to the same visibility rules as every other skill.
         # Requires sys_modules=True and an executor that accepts .use() middleware.
         if sys_modules and hasattr(executor, "use"):
             try:
                 from apcore import register_sys_modules
                 from apcore.config import Config
 
-                # Build a Config instance with sys_modules enabled.
-                # Merge registry's own config (if any) so module-level settings are preserved.
+                # `sys_modules` is a TOP-LEVEL section of apcore's config
+                # (apcore config.py DEFAULTS), and `register_sys_modules` reads
+                # `config.get("sys_modules.enabled")` in legacy mode. Nesting it
+                # under `apcore:` — as this did — meant the lookup missed, the
+                # function returned at its first line, and `sys_modules=True`
+                # registered nothing while the log below claimed it had
+                # (apcore-a2a#5). Any operator settings found under either
+                # spelling are carried through, top-level winning — apcore's own
+                # `Registry` exposes no `config`, so this reads a host-supplied
+                # one and is `{}` in the ordinary case. `sys_modules.events` has
+                # no route in through this binding, so `sys_modules=True` alone
+                # registers the six read modules and no `system.control.*`.
                 registry_cfg: dict[str, Any] = getattr(registry, "config", {}) or {}
+                nested_sys: dict[str, Any] = registry_cfg.get("apcore", {}).get("sys_modules", {})
                 sys_data: dict[str, Any] = {
                     **registry_cfg,
-                    "apcore": {
-                        **registry_cfg.get("apcore", {}),
-                        "sys_modules": {
-                            **registry_cfg.get("apcore", {}).get("sys_modules", {}),
-                            "enabled": True,
-                        },
+                    "sys_modules": {
+                        **nested_sys,
+                        **registry_cfg.get("sys_modules", {}),
+                        "enabled": True,
                     },
                 }
                 register_sys_modules(registry, executor, Config(data=sys_data))
-                logger.info("Registered apcore system modules (sys.*)")
             except Exception:
                 logger.warning("register_sys_modules failed — continuing without sys modules", exc_info=True)
+            else:
+                # Reported separately from the call above, and never inside its
+                # `try`: a registry that cannot be enumerated would otherwise be
+                # logged as a registration failure — misattributing an outcome is
+                # the defect apcore-a2a#5 was made of.
+                try:
+                    registered = sorted(m for m in registry.list() if m.startswith("system."))
+                except Exception:  # pragma: no cover - enumeration is a log detail
+                    logger.info("Registered apcore system modules")
+                else:
+                    logger.info("Registered apcore system modules: %s", ", ".join(registered) or "none")
+
+        _warn_on_unprotected_control_surface(executor)
 
         # Build AgentCard AFTER sys_modules so sys.* skills are included when enabled.
         # This is the FULL card; the public and extended views are derived from

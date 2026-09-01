@@ -4,9 +4,10 @@ apcore's ACL is the authority on who may invoke what, and the discovery surface
 reflects that authority rather than ignoring it. Two surfaces, two answers:
 
 - the **public** card (srs FR-AGC-003) answers "what may *anyone* call": every
-  registered skill, minus those the ACL denies to the anonymous principal, minus
-  those annotated ``requires_approval``. It resolves exactly one identity, so it
-  is computed once when the card is built. A per-caller filter here would be
+  registered skill, minus apcore's reserved ``system.*`` management namespace,
+  minus those the ACL denies to the anonymous principal, minus those gated behind
+  a human. It resolves exactly one identity, so it is computed once when the card
+  is built. A per-caller filter here would be
   strictly more accurate and unaffordable: ``/.well-known/`` is auth-exempt by
   design, so every anonymous request would drive ``len(skills)`` calls into the
   consumer's ACL audit sink, each recording a ``deny`` decision indistinguishable
@@ -16,6 +17,16 @@ reflects that authority rather than ignoring it. Two surfaces, two answers:
   resolved against the authenticated identity, with ``requires_approval`` skills
   restored — an approval gate is a prompt the caller can satisfy, not a refusal.
   Affordable precisely because this endpoint requires credentials.
+
+Only the ``system.*`` subtraction is unconditional. Every other one is
+governance-shaped, and with no ACL configured they collapse: the ACL predicates
+are empty and the ``requires_approval`` annotation covers only
+``system.control.*``, leaving the six read modules to publish the deployment's
+module inventory, health and usage to any anonymous caller. ``ACL.discover()``
+yields nothing for a missing root by design, so "no ACL at all" is the default
+rather than an edge case — which is why the rule that has to hold there keys on
+apcore's namespace and not on a governance verdict (srs FR-AGC-003 criteria 12
+and 13).
 
 Authorization and approval are two independent results, not one (apcore
 PROTOCOL_SPEC §6.1.6), and this module reads them apart. ``ACL.check`` folds
@@ -29,6 +40,15 @@ Before this module, this binding filtered nothing at all: ``_build_skills``
 iterated ``registry.list()`` and never consulted the ACL, so a module the ACL
 denied to everyone was still advertised — by id, name, description and full
 input schema — to any anonymous caller.
+
+**Internal module.** Nothing here is part of this package's public API — it is
+absent from ``apcore_a2a.__init__`` and from ``docs/features/public-api.md``, and
+the surface is expected to move: ``allowed_skill_ids`` already changed meaning
+once (it now reports the authorization axis alone, where it used to fold in the
+approval gate). Python has no import gate, so this paragraph is the whole of the
+guarantee; the TypeScript twin is unreachable to consumers because
+``package.json`` exports only the package root, and the Rust twin is
+``pub(crate)``. Depend on ``serve`` / ``A2AServerFactory`` instead.
 """
 
 from __future__ import annotations
@@ -41,6 +61,20 @@ from a2a.types import AgentCard
 from apcore_a2a.adapters.skill_mapper import requires_approval
 
 logger = logging.getLogger(__name__)
+
+
+#: apcore's reserved namespace for the runtime's own management modules
+#: (apcore ``PROTOCOL_SPEC`` §6.7) — ``system.health.*``, ``system.usage.*``,
+#: ``system.manifest.*`` and, under the second opt-in, ``system.control.*``.
+#: apcore identifies the surface by this prefix itself, in
+#: ``Executor.governance_state()``, so matching on it conveys apcore's own
+#: boundary rather than inventing one.
+SYSTEM_NAMESPACE = "system."
+
+
+def is_system_skill(skill_id: str) -> bool:
+    """Whether ``skill_id`` is one of apcore's management modules."""
+    return skill_id.startswith(SYSTEM_NAMESPACE)
 
 
 def executor_acl(executor: Any) -> Any | None:
@@ -159,10 +193,15 @@ def _card_with_skills(card: AgentCard, keep: set[str]) -> AgentCard:
 def build_public_card(card: AgentCard, executor: Any, registry: Any) -> AgentCard:
     """The public card: what an unauthenticated caller could actually invoke.
 
-    See the module docstring for why this is resolved once rather than per
-    caller (srs FR-AGC-003).
+    ``system.*`` is removed unconditionally (srs FR-AGC-003 criteria 12 and 13);
+    the remaining subtractions are governance-shaped. See the module docstring
+    for why this is resolved once rather than per caller.
     """
-    ids = [skill.id for skill in card.skills]
+    # The management namespace goes first and unconditionally: it is the only
+    # subtraction that survives a deployment with no ACL, and skipping the ACL
+    # for these ids also keeps `system.*` out of the audit trail of a decision
+    # whose answer cannot change the outcome.
+    ids = [skill.id for skill in card.skills if not is_system_skill(skill.id)]
     access = skill_access(executor, ids, identity=None)
     # Both sources of an approval gate, unioned as PROTOCOL_SPEC §6.9 composes
     # them: the module's own annotation, and an ACL rule carrying
@@ -184,6 +223,11 @@ def build_extended_card(card: AgentCard, executor: Any, identity: Any | None) ->
     the gate comes from the module's annotation or from an ACL rule. Only the
     authorization axis of the decision filters here — dropping a skill because it
     needs a human would report a refusal the ACL never issued.
+
+    ``system.*`` is kept too (criterion 11), filtered by the ACL like any other
+    skill: the namespace exclusion is a property of the public card, not of the
+    skill, and an authenticated management agent the ACL permits must still be
+    able to discover the surface it is entitled to drive.
     """
     ids = [skill.id for skill in card.skills]
     return _card_with_skills(card, allowed_skill_ids(executor, ids, identity))

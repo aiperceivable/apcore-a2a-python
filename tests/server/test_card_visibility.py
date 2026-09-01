@@ -223,3 +223,72 @@ def test_an_acl_denial_still_hides_the_skill_from_both_cards():
     card = _card(registry)
     assert _ids(build_public_card(card, _Executor(acl), registry)) == []
     assert _ids(build_extended_card(card, _Executor(acl), Identity(id="u1", type="service"))) == []
+
+
+def _system_registry() -> _Registry:
+    """apcore's management namespace as `sys_modules` registers it: six read
+    modules, plus one `system.control.*` write module that carries the
+    `requires_approval` annotation the three real ones do."""
+    return _Registry(
+        {
+            "math.add": _Descriptor("math.add", "Adds"),
+            "system.health.summary": _Descriptor("system.health.summary", "Reports health"),
+            "system.manifest.full": _Descriptor("system.manifest.full", "Lists every module"),
+            "system.control.update_config": _Descriptor(
+                "system.control.update_config",
+                "Updates configuration",
+                _Annotations(requires_approval=True),
+            ),
+        }
+    )
+
+
+def test_public_card_excludes_the_system_namespace_with_no_acl():
+    """srs FR-AGC-003 criteria 12 and 13 — the case both ACL-shaped rules leave
+    open. With no ACL the ACL predicates are empty and the annotation covers only
+    ``system.control.*``, so without the namespace rule the read modules would
+    publish the deployment's module inventory and health to any anonymous caller
+    on the auth-exempt ``/.well-known/`` route."""
+    registry = _system_registry()
+    public = build_public_card(_card(registry), _Executor(), registry)
+    assert _ids(public) == ["math.add"]
+
+
+def test_public_card_excludes_the_system_namespace_even_when_the_acl_allows_it():
+    """The subtraction is unconditional, not a consequence of the ACL denying
+    them: an ACL that explicitly allows everything must not put them back."""
+    registry = _system_registry()
+    acl = ACL(
+        rules=[ACLRule(callers=["*"], targets=["*"], effect="allow")],
+        default_effect="allow",
+    )
+    public = build_public_card(_card(registry), _Executor(acl), registry)
+    assert _ids(public) == ["math.add"]
+
+
+def test_extended_card_keeps_the_system_namespace():
+    """srs FR-AGC-004 criterion 11. The exclusion is a property of the public
+    card, not of the skill — an authenticated management agent the ACL permits
+    must still be able to discover the surface it may drive. ``requires_approval``
+    keeps the control module here too (criterion 2), so this also shows the two
+    rules composing rather than one masking the other."""
+    registry = _system_registry()
+    extended = build_extended_card(_card(registry), _Executor(), Identity(id="u1", type="service"))
+    assert _ids(extended) == [
+        "math.add",
+        "system.control.update_config",
+        "system.health.summary",
+        "system.manifest.full",
+    ]
+
+
+def test_the_system_namespace_is_still_subject_to_the_acl_on_the_extended_card():
+    """Keeping the namespace off the public card must not exempt it from the ACL
+    on the surface where the ACL does apply."""
+    registry = _system_registry()
+    acl = ACL(
+        rules=[ACLRule(callers=["*"], targets=["system.*"], effect="deny")],
+        default_effect="allow",
+    )
+    extended = build_extended_card(_card(registry), _Executor(acl), Identity(id="u1", type="service"))
+    assert _ids(extended) == ["math.add"]

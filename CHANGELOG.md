@@ -7,11 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.6.0] - 2026-09-01
 
-Resolves `aiperceivable/apcore-a2a` issues #2, #3 and #4, tracked here as #1.
-One principle runs through all three: **apcore already draws these distinctions,
+Resolves `aiperceivable/apcore-a2a` issues #2, #3, #4 and #5, tracked here as #1.
+One principle runs through all four: **apcore already draws these distinctions,
 and a transport binding's job is to convey them, not to flatten them.**
 
-Suite: 382 tests (was 353).
+Suite: 392 tests (was 353).
 Runtime floor moves to apcore 0.28.0 / apcore-toolkit 0.10.2 (`apcore>=0.28.0` / `apcore-toolkit>=0.10.2`).
 
 ### Changed
@@ -81,6 +81,30 @@ Runtime floor moves to apcore 0.28.0 / apcore-toolkit 0.10.2 (`apcore>=0.28.0` /
   to decide which surface. Public API gains `skill_access()`; `allowed_skill_ids()`
   stays and now means the authorization axis alone.
 
+- **apcore's `system.*` management namespace never reaches the public Agent Card**
+  (spec srs FR-AGC-003 criteria 12 and 13, FR-AGC-004 criterion 11;
+  `aiperceivable/apcore-a2a#5`). Removed **unconditionally** — independent of ACL
+  state, of the `requires_approval` annotation, and of how `sys_modules` is
+  configured. Kept on the extended card, filtered per identity like any other
+  skill.
+
+  Every other subtraction the public card makes is governance-shaped, and with no
+  ACL configured they all collapse: the ACL predicates are empty and the
+  annotation covers only the three `system.control.*` write modules — leaving the
+  six read modules, which enumerate the deployment's module inventory, health and
+  usage, published to any anonymous caller on the auth-exempt `/.well-known/`
+  route. `ACL.discover()` yields nothing for a missing root by design, so "no ACL
+  at all" is the default rather than an edge case, and the rule that has to hold
+  there cannot be shaped like a governance verdict.
+
+- **Warns when an unprotected control surface is served** (spec srs FR-AGC-007).
+  Server construction reads apcore's `Executor.governance_state()` and warns when
+  `unprotected_control_surface` is true. It never refuses to start and never
+  alters a card. Withholding `system.*` from the public card removes the surface
+  from *discovery*, not from *dispatch*: apcore's approval gate warns once and
+  continues with no `ApprovalHandler`, so the write modules stay callable, and the
+  card rule must not be mistaken for a fix to that.
+
 ### Added
 
 - **apcore's behavioral annotations reach the wire** (spec srs FR-SKL-004):
@@ -112,6 +136,22 @@ Runtime floor moves to apcore 0.28.0 / apcore-toolkit 0.10.2 (`apcore>=0.28.0` /
   card surfaces.
 
 ### Fixed
+
+- **`sys_modules` registered nothing** (`aiperceivable/apcore-a2a#5`). apcore reads
+  `sys_modules.enabled`, a **top-level** config section; the flag was a silent
+  no-op in every deployment since it was introduced.
+
+  This binding built the registration `Config` as
+  `{"apcore": {"sys_modules": {"enabled": True}}}` while apcore reads
+  `config.get("sys_modules.enabled")` in legacy mode, so `register_sys_modules`
+  returned at its first line — and `logger.info("Registered apcore system
+  modules")` fired anyway. Operator settings found under either spelling are now
+  carried through, top-level winning, and the log names the ids actually
+  registered.
+
+  Fixed together with the namespace rule above, deliberately in that order:
+  repairing the config path on its own is precisely what would have opened the
+  hole that rule closes.
 
 - **`AgentCardBuilder.build_extended` no longer returns a verbatim copy.** It
   now receives the full card, and the per-caller narrowing happens in the
