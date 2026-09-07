@@ -6,6 +6,7 @@ from apcore_a2a._serve import async_serve, serve
 from apcore_a2a.adapters import AgentCardBuilder, ErrorMapper, PartConverter, SchemaConverter, SkillMapper
 from apcore_a2a.auth import Authenticator, AuthMiddleware, ClaimMapping, JWTAuthenticator, auth_identity_var
 from apcore_a2a.client import A2AClient
+from apcore_a2a.openapi_backend import openapi_backend
 from apcore_a2a.server import A2AServerFactory, ApCoreAgentExecutor
 
 try:
@@ -33,4 +34,6 @@ __all__ = [
     # Server
     "A2AServerFactory",
     "ApCoreAgentExecutor",
+    # Backend sources
+    "openapi_backend",
 ]

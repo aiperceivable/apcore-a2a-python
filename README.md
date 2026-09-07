@@ -37,8 +37,8 @@ It solves a common problem: **you've built AI capabilities with apcore modules, 
 ## Requirements
 
 - Python >= 3.11
-- `apcore` >= 0.22.0
-- `apcore-toolkit` >= 0.8.0
+- `apcore` >= 0.30.0
+- `apcore-toolkit` >= 0.11.1 (the `openapi` extra additionally needs `apcore-toolkit[http-proxy]`)
 
 ---
 
@@ -65,6 +65,44 @@ serve(Executor(registry))  # Starts on http://0.0.0.0:8000
 ```
 
 Your agent is now live at `http://localhost:8000/.well-known/agent-card.json` (the 0.3 alias `/.well-known/agent.json` is also served).
+
+### Serve an OpenAPI document instead
+
+No apcore project required — point it at an OpenAPI 3.0/3.1 document and every operation
+becomes an A2A Skill, proxied over HTTP to the API that published it:
+
+```bash
+pip install "apcore-a2a[openapi]"
+
+apcore-a2a serve --from-openapi https://petstore3.swagger.io/api/v3/openapi.json \
+                 --openapi-prefix petstore
+```
+
+Or programmatically:
+
+```python
+from apcore_a2a import openapi_backend, serve
+
+registry = openapi_backend(
+    "https://petstore3.swagger.io/api/v3/openapi.json",
+    prefix="petstore",
+)
+serve(registry)
+```
+
+> [!WARNING]
+> An OpenAPI document describes an API's *shape*, not the *consequences* of calling it, so
+> `requires_approval` is never inferred — a `POST /charges` that moves money is annotated
+> exactly like a `POST /echo`. Such an operation is therefore advertised on the **public**
+> Agent Card, which is served without authentication. apcore-a2a warns about this at
+> startup, and the warning is not silenced by merely attaching an ACL.
+>
+> The recommended shape is `--openapi-prefix` plus an ACL with `default_effect: deny` and a
+> prefixed catch-all deny rule; see [the feature spec][openapi-backend] for why an
+> allow-list of operation names is the fail-safe direction when an upstream API renames
+> something.
+
+[openapi-backend]: https://github.com/aiperceivable/apcore-a2a/blob/main/docs/features/openapi-backend.md
 
 ### Try the Examples
 

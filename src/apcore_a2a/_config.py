@@ -19,6 +19,16 @@ A2A_DEFAULTS: dict[str, Any] = {
     "explorer": False,
     "metrics": False,
     "push_notifications": False,
+    # OpenAPI backend — {spec, base_url, prefix, include, exclude,
+    # include_deprecated, timeout, headers, acknowledge_unapproved_writes}.
+    #
+    # `spec` is the FIRST path-typed key in this namespace, and apcore 0.30.0's
+    # protections for path-typed keys do not reach it: `Config.path_typed_keys()`
+    # is a fixed tuple of apcore's own five keys and never consults a namespace
+    # registered here (verified against apcore 0.30.0), and the PROTOCOL_SPEC
+    # §9.2.1 requirement-5 empty-value discard is gated on that same set.
+    # `openapi_backend.resolve_spec_location` owns the three rules instead.
+    "openapi": None,
 }
 
 

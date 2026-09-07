@@ -9,6 +9,42 @@ import pytest
 
 from apcore_a2a.__main__ import _resolve_auth_key, _run_serve, main
 
+
+def _ns(**overrides: object) -> Namespace:
+    """A complete `serve` Namespace, with every flag at its argparse default.
+
+    Kept in one place so that adding a CLI flag is a one-line change here rather
+    than an edit at all eight call sites.
+    """
+    defaults: dict[str, object] = {
+        "extensions_dir": None,
+        "from_openapi": None,
+        "openapi_base_url": None,
+        "openapi_prefix": None,
+        "openapi_include": None,
+        "openapi_exclude": None,
+        "openapi_headers": None,
+        "openapi_no_deprecated": None,
+        "host": "0.0.0.0",
+        "port": 8000,
+        "name": None,
+        "description": None,
+        "agent_version": None,
+        "url": None,
+        "auth_type": None,
+        "auth_key": None,
+        "auth_issuer": None,
+        "auth_audience": None,
+        "push_notifications": False,
+        "explorer": False,
+        "cors_origins": None,
+        "execution_timeout": 300,
+        "log_level": "info",
+    }
+    defaults.update(overrides)
+    return Namespace(**defaults)
+
+
 # ---------------------------------------------------------------------------
 # main() — top-level tests
 # ---------------------------------------------------------------------------
@@ -75,7 +111,7 @@ def test_serve_zero_modules_exits_1(tmp_path, capsys):
     ext_dir = tmp_path / "extensions"
     ext_dir.mkdir()
 
-    args = Namespace(
+    args = _ns(
         extensions_dir=str(ext_dir),
         host="0.0.0.0",
         port=8000,
@@ -120,7 +156,7 @@ def test_serve_auth_bearer_missing_key_exits_1(tmp_path, capsys, monkeypatch):
     # Make sure APCORE_JWT_SECRET is not set
     monkeypatch.delenv("APCORE_JWT_SECRET", raising=False)
 
-    args = Namespace(
+    args = _ns(
         extensions_dir=str(ext_dir),
         host="0.0.0.0",
         port=8000,
@@ -157,7 +193,7 @@ def test_serve_auth_bearer_with_key(tmp_path, monkeypatch):
     ext_dir = tmp_path / "extensions"
     ext_dir.mkdir()
 
-    args = Namespace(
+    args = _ns(
         extensions_dir=str(ext_dir),
         host="0.0.0.0",
         port=8000,
@@ -193,7 +229,7 @@ def test_serve_auth_bearer_with_jwt_secret_env(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setenv("APCORE_JWT_SECRET", "env_secret_key")
 
-    args = Namespace(
+    args = _ns(
         extensions_dir=str(ext_dir),
         host="0.0.0.0",
         port=8000,
@@ -232,7 +268,7 @@ def test_serve_runtime_error_exits_2(tmp_path, capsys):
     ext_dir = tmp_path / "extensions"
     ext_dir.mkdir()
 
-    args = Namespace(
+    args = _ns(
         extensions_dir=str(ext_dir),
         host="0.0.0.0",
         port=8000,
@@ -270,7 +306,7 @@ def test_serve_keyboard_interrupt_exits_0(tmp_path):
     ext_dir = tmp_path / "extensions"
     ext_dir.mkdir()
 
-    args = Namespace(
+    args = _ns(
         extensions_dir=str(ext_dir),
         host="0.0.0.0",
         port=8000,
@@ -310,7 +346,7 @@ def test_serve_calls_serve_with_correct_args(tmp_path):
     ext_dir = tmp_path / "extensions"
     ext_dir.mkdir()
 
-    args = Namespace(
+    args = _ns(
         extensions_dir=str(ext_dir),
         host="127.0.0.1",
         port=9090,
@@ -362,7 +398,7 @@ def test_serve_default_url_constructed_from_host_port(tmp_path):
     ext_dir = tmp_path / "extensions"
     ext_dir.mkdir()
 
-    args = Namespace(
+    args = _ns(
         extensions_dir=str(ext_dir),
         host="192.168.1.100",
         port=7777,

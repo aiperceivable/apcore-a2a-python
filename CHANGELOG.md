@@ -5,6 +5,153 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-09-07
+
+Minor release, version-aligned with the TypeScript and Rust SDKs. Ships the **OpenAPI
+Backend** (feature F-12) and raises the required floor to `apcore>=0.30.0` /
+`apcore-toolkit>=0.11.1` — which is the same change, since apcore-toolkit 0.11.0 is what
+shipped the OpenAPI Scanner the feature is built on.
+
+Suite: 449 tests (was 392), 7 skipped, `ruff check` clean.
+
+### Added
+
+- **`apcore_a2a.openapi_backend`** — `openapi_backend()`, plus `project_module_id`,
+  `resolve_spec_location`, `synthesize_description` and
+  `build_openapi_backend_from_config`. Point it at an OpenAPI 3.0/3.1 document and every
+  operation becomes an A2A Skill, proxied over HTTP to the API that published it, with no
+  apcore project on the other end. `openapi_backend` is re-exported from the package root.
+
+  The pipeline is `load_spec → OpenAPIScanner.scan → HTTPProxyRegistryWriter.write →
+  Registry`, all already-shipped apcore-toolkit code; everything downstream is the adapter
+  that already serves an extensions directory, unmodified. See
+  `apcore-a2a/docs/features/openapi-backend.md`.
+
+- **Two repairs the composition cannot work without.** `FR-OAS-002`: apcore-toolkit derives
+  module IDs into `[A-Za-z0-9_.-]` while apcore's `Registry` accepts only
+  `^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$` — measured here against apcore 0.30.0 /
+  apcore-toolkit 0.11.1, the canonical Swagger Petstore scans cleanly, registers **nothing**,
+  and yields an Agent Card with zero skills without raising anywhere. `FR-OAS-003`: an
+  operation with neither `summary` nor `description` yields `""`, and `AgentCardBuilder`
+  skips empty-description modules, so undocumented operations vanished from the card with no
+  diagnostic; a `{METHOD} {path}` description is synthesized instead and the affected
+  modules are named at INFO.
+
+- **`FR-OAS-005` unapproved-write warning.** The scanner never infers `requires_approval`
+  for any HTTP method, and the 0.6.0 public-card filter subtracts only ACL-denied and
+  approval-gated skills — so a scanned `POST /charges` is advertised on the unauthenticated
+  `/.well-known/agent-card.json`. The warning names that exposure, and is **never**
+  suppressed by the presence of an ACL, only by having nothing to warn about, by a module
+  declaring `requires_approval` itself, or by an explicit `acknowledge_unapproved_writes`.
+
+- **CLI:** `--from-openapi`, `--openapi-base-url`, `--openapi-prefix`, `--openapi-include`,
+  `--openapi-exclude`, `--openapi-header` (repeatable `KEY:VALUE`, spec fetch only) and
+  `--openapi-no-deprecated`. `--extensions-dir` is no longer required on its own; a backend
+  source may come from it, from `--from-openapi`, or from `apcore-a2a.openapi.spec` in the
+  config file, and naming none of the three is a usage error (exit 2, as it was when argparse
+  enforced `required=True`). An extensions directory combined with an OpenAPI source requires
+  a prefix, from either the flag or the config.
+
+- **Config:** an `apcore-a2a.openapi` section, the namespace's first nested one and its first
+  path-typed key. apcore 0.30.0's protections for path-typed keys do not reach a consumer
+  namespace — verified: `Config.path_typed_keys()` is a fixed tuple of apcore's own five keys
+  and does not change after registering a namespace with a path-valued default — so
+  `resolve_spec_location` owns the three rules instead.
+
+- **New optional dependency group `openapi`** (`apcore-toolkit[http-proxy]>=0.11.1`), for the
+  spec fetch and the HTTP proxy registration.
+
+- 57 new conformance and regression tests (`tests/conformance/test_openapi_backend.py`) against the shared
+  corpus in `apcore-a2a/conformance/fixtures/openapi_backend.json`, including the fixture's
+  `card_cases`, which drive the real `build_public_card` / `build_extended_card` and pin the
+  exposure as a fact: an unapproved scanned write **is** on the public card, and an ACL rule
+  carrying `approval: required` removes it from public while keeping it on extended.
+
+### Fixed
+
+Five defects found by a cross-language parity audit of the new backend, each now carrying a
+regression test that was watched fail before it was watched pass.
+
+- **The `apcore-a2a.openapi` Config Bus section was documented and read by nothing.**
+  `build_openapi_backend_from_config` had no caller anywhere in `src/`, so the section the
+  feature spec documents as a first-class surface — and that SRS FR-OAS-004 AC 5 states a
+  requirement about — did nothing at serve time. The consequence was larger than a missing
+  convenience: `timeout`, `include`, `exclude` and `acknowledge_unapproved_writes` have no CLI
+  flag, so they were unreachable through *any* live path, and the last of those is the only
+  configuration switch that suppresses the FR-OAS-005 public-card warning.
+
+  The CLI now merges the section with the flags, **flag wins per key** — the precedence the
+  feature spec already stated. Per key rather than per source: choosing the whole source by
+  whoever named `spec` would make `--openapi-prefix` a silent no-op alongside a config-declared
+  spec, which is the shape of the apcore-mcp defect this project filed upstream.
+
+  `--openapi-no-deprecated` accordingly defaults to `None`, not `False`. With argparse's
+  `store_true` default, simply *not passing* the flag would overwrite a config
+  `include_deprecated: false` with `True` — an absent flag silently reversing a setting the
+  operator wrote.
+
+- **A wrong-shaped `apcore-a2a.openapi` was swallowed and the wrong error surfaced.**
+  `openapi: ./spec.json` — the plausible shorthand typo for `openapi: {spec: ./spec.json}` —
+  was discarded as a non-mapping, yielded no `spec`, and reached the operator as "one of
+  --extensions-dir or --from-openapi is required", naming neither the key they got wrong nor
+  the shape it wants. The merge now passes the value through so the message that names it is
+  reachable, and that message gained the actual type (`must be a mapping, got str`). Found by
+  comparing against apcore-a2a-rust, which already passed it through.
+
+- **SECURITY: a malformed `--openapi-header` echoed its value to stderr.** The flag exists to
+  carry a credential, and the commonest way to malform it is to paste the token without its
+  `Key:` prefix — which put the secret in terminal scrollback and in any CI log capturing
+  stderr. The message now names the expected shape and never the value. The feature spec's
+  Security considerations already made this a MUST NOT, and apcore-a2a-rust already had the
+  regression test; Python was the outlier.
+
+- **A string could acknowledge unapproved writes and silence the FR-OAS-005 warning.** The
+  Config Bus route read `bool(openapi_config.get("acknowledge_unapproved_writes", False))`,
+  and `bool("false")` is `True` — as are `"0"` and `"no"`. A value arriving as a string from
+  an `APCORE_A2A_OPENAPI_*` environment override or from quoted YAML therefore turned an
+  operator's explicit refusal into an acknowledgement, suppressing the one warning that names
+  the public Agent Card exposure. Now type-guarded through `_as_bool`, matching what
+  TypeScript and Rust already did.
+
+- **The same route coerced every other config value.** `float("abc")` raised at startup where
+  TypeScript and Rust fall back to the default, `float("5")` accepted a shape the schema
+  forbids, and a non-string `base_url` reached `HTTPProxyRegistryWriter` and failed inside
+  `urlparse` instead of falling back to the document's `servers[0].url`. `_as_str` and
+  `_as_float` now guard all of them.
+
+### Changed
+
+- Required `apcore` floor raised to `0.30.0`, `apcore-toolkit` to `0.11.1`.
+- `README.md`'s Requirements block corrected — it had been stating `apcore >= 0.22.0` /
+  `apcore-toolkit >= 0.8.0`, four and three floors behind `pyproject.toml` respectively.
+- `tests/test_cli.py` builds its `serve` namespaces through one `_ns()` helper, so adding a
+  CLI flag is a one-line change there rather than an edit at all eight call sites.
+
+### The runtime floor (folded in from the unreleased 0.6.1)
+
+The apcore floor itself carries no behaviour change for this package. **0.29.0** closes the
+ACL pattern array's shape at every entry point, adds `caller_id` / `action` to
+`ApprovalRequest`, and makes `ACL.__init__` validate the rules it is handed — this package
+constructs no `ACLRule` and no `ApprovalRequest`; it reads an ACL the host supplies, through
+`check_access`. **0.30.0** is confined to `Config` / `BindingLoader`: a `Config.project_root`
+accessor, a declared set of path-typed configuration keys, a set-but-empty `APCORE_*` path
+override now discarded, and `bindings.dir` / `bindings.pattern` as canonical defaults.
+
+**0.30.0 does become load-bearing through F-12**, in a way that inverts what was true one
+release ago. Through 0.6.x the `apcore-a2a` namespace held five scalar keys and no
+path-valued one, so §9.2.1 and §9.2.2 had nothing to say about it. `apcore-a2a.openapi.spec`
+is the namespace's first path-typed key, and apcore's protections for such keys do not reach
+a consumer namespace — see the `Config` entry above. `--extensions-dir` remains unaffected
+either way: it is an explicit CLI argument handed straight to `Registry`.
+
+### Upgrade notes
+
+An ACL rule whose `callers` or `targets` is `[]`, `["$or"]`, `["$not"]` or a multi-operand
+`["$not", p1, p2]` is **refused at load** by apcore 0.29.0 rather than silently matching
+nothing. Such a rule had been contributing nothing to the decision, so under
+`default_effect: allow` it permitted the very call it named — and the public Agent Card
+advertised the skill accordingly. See apcore's 0.29.0 changelog for the per-shape migration.
+
 ## [0.6.0] - 2026-09-01
 
 Resolves `aiperceivable/apcore-a2a` issues #2, #3, #4 and #5, tracked here as #1.
