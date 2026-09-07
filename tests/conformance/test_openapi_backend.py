@@ -92,9 +92,7 @@ def test_modules(case: dict[str, Any], caplog: pytest.LogCaptureFixture) -> None
             (w for w in warnings if drop["derived_id"] in w),
             None,
         )
-        assert line is not None, (
-            f"no WARNING names the dropped id {drop['derived_id']!r}; got {warnings}"
-        )
+        assert line is not None, f"no WARNING names the dropped id {drop['derived_id']!r}; got {warnings}"
         # The segment is a substring of the derived id, so asserting both against
         # the same line proves nothing. Remove the id first: what remains must
         # still name the segment, or the operator cannot tell WHY it was dropped.
@@ -104,15 +102,13 @@ def test_modules(case: dict[str, Any], caplog: pytest.LogCaptureFixture) -> None
         )
 
     for substring in case.get("expected_warning_substrings") or []:
-        assert any(substring in w for w in warnings), (
-            f"missing {substring!r} in WARNING lines: {warnings}"
-        )
+        assert any(substring in w for w in warnings), f"missing {substring!r} in WARNING lines: {warnings}"
 
     for module_id in case.get("expected_on_agent_card") or []:
         definition = registry.get_definition(module_id)
-        assert definition.description.strip(), (
-            f"{module_id} has an empty description and AgentCardBuilder would skip it"
-        )
+        assert (
+            definition.description.strip()
+        ), f"{module_id} has an empty description and AgentCardBuilder would skip it"
 
 
 @pytest.mark.parametrize(
@@ -138,9 +134,7 @@ def test_description_repair_flag(case: dict[str, Any], caplog: pytest.LogCapture
         if "description_was_synthesized" not in spec:
             continue
         if spec["description_was_synthesized"]:
-            assert len(synthesis) == 1, (
-                f"expected exactly one synthesis INFO line, got {synthesis}"
-            )
+            assert len(synthesis) == 1, f"expected exactly one synthesis INFO line, got {synthesis}"
             assert spec["module_id"] in synthesis[0], (
                 f"the synthesis report does not name {spec['module_id']!r} (the "
                 f"post-projection id that reaches the card): {synthesis[0]!r}"
@@ -156,24 +150,16 @@ def test_description_repair_flag(case: dict[str, Any], caplog: pytest.LogCapture
 
 
 @pytest.mark.parametrize("case", _FIXTURE["warning_cases"], ids=_ids)
-def test_unapproved_write_warning(
-    case: dict[str, Any], caplog: pytest.LogCaptureFixture
-) -> None:
+def test_unapproved_write_warning(case: dict[str, Any], caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.WARNING):
         _build(case)
 
-    warnings = "\n".join(
-        r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING
-    )
+    warnings = "\n".join(r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING)
     fired = "PUBLIC Agent Card" in warnings
 
-    assert fired is case["expect_warning"], (
-        f"expected warning={case['expect_warning']}, got:\n{warnings}"
-    )
+    assert fired is case["expect_warning"], f"expected warning={case['expect_warning']}, got:\n{warnings}"
     for substring in case.get("expected_warning_substrings") or []:
-        assert substring.lower() in warnings.lower(), (
-            f"missing {substring!r} in:\n{warnings}"
-        )
+        assert substring.lower() in warnings.lower(), f"missing {substring!r} in:\n{warnings}"
 
 
 def test_permissive_acl_does_not_suppress_the_warning() -> None:
@@ -183,11 +169,7 @@ def test_permissive_acl_does_not_suppress_the_warning() -> None:
     a gate, never the presence of protection. An implementation that gates this
     warning on ``acl_configured`` passes every fixture case but this one.
     """
-    case = next(
-        c
-        for c in _FIXTURE["warning_cases"]
-        if c["id"] == "write_warning_not_suppressed_by_permissive_acl"
-    )
+    case = next(c for c in _FIXTURE["warning_cases"] if c["id"] == "write_warning_not_suppressed_by_permissive_acl")
     assert case["acl"]["default_effect"] == "allow"
     assert case["expect_warning"] is True
 
@@ -198,19 +180,13 @@ def test_permissive_acl_does_not_suppress_the_warning() -> None:
 
 
 @pytest.mark.parametrize("case", _FIXTURE["config_cases"], ids=_ids)
-def test_spec_location(
-    case: dict[str, Any], caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_spec_location(case: dict[str, Any], caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir("/")  # a CWD that is never the expected answer
 
     with caplog.at_level(logging.WARNING):
-        resolved = resolve_spec_location(
-            case["spec_value"], project_root=case["project_root"]
-        )
+        resolved = resolve_spec_location(case["spec_value"], project_root=case["project_root"])
         if resolved is None and "spec_value_next_tier" in case:
-            resolved = resolve_spec_location(
-                case["spec_value_next_tier"], project_root=case["project_root"]
-            )
+            resolved = resolve_spec_location(case["spec_value_next_tier"], project_root=case["project_root"])
 
     assert resolved == case["expected_resolved_spec"]
 
@@ -280,12 +256,8 @@ def test_agent_card_visibility(case: dict[str, Any]) -> None:
     public = build_public_card(card, executor, registry)
     extended = build_extended_card(card, executor, Identity(id="u1", type="service"))
 
-    assert sorted(s.id for s in public.skills) == sorted(
-        case["expected_public_card_skills"]
-    )
-    assert sorted(s.id for s in extended.skills) == sorted(
-        case["expected_extended_card_skills"]
-    )
+    assert sorted(s.id for s in public.skills) == sorted(case["expected_public_card_skills"])
+    assert sorted(s.id for s in extended.skills) == sorted(case["expected_extended_card_skills"])
 
 
 # --------------------------------------------------------------------------
@@ -491,15 +463,11 @@ def test_config_bus_alone_supplies_a_backend_source(
     """
     from apcore_a2a import __main__ as cli
 
-    monkeypatch.setattr(
-        cli, "_parse_headers", lambda _raw: None
-    )  # isolate from the header parser
+    monkeypatch.setattr(cli, "_parse_headers", lambda _raw: None)  # isolate from the header parser
     monkeypatch.setattr(
         "apcore_a2a._config.get_a2a_setting",
         lambda key, fallback=None: (
-            {"spec": "./from-config.json", "timeout": 5.0, "prefix": "cfg"}
-            if key == "openapi"
-            else fallback
+            {"spec": "./from-config.json", "timeout": 5.0, "prefix": "cfg"} if key == "openapi" else fallback
         ),
     )
 
@@ -524,9 +492,7 @@ def test_an_explicit_flag_beats_the_config_bus_per_key(
     monkeypatch.setattr(
         "apcore_a2a._config.get_a2a_setting",
         lambda key, fallback=None: (
-            {"spec": "./from-config.json", "prefix": "cfg", "timeout": 5.0}
-            if key == "openapi"
-            else fallback
+            {"spec": "./from-config.json", "prefix": "cfg", "timeout": 5.0} if key == "openapi" else fallback
         ),
     )
 
@@ -598,9 +564,7 @@ def test_no_spec_anywhere_is_not_an_openapi_source(
 ) -> None:
     from apcore_a2a import __main__ as cli
 
-    monkeypatch.setattr(
-        "apcore_a2a._config.get_a2a_setting", lambda key, fallback=None: fallback
-    )
+    monkeypatch.setattr("apcore_a2a._config.get_a2a_setting", lambda key, fallback=None: fallback)
     assert cli._merge_openapi_settings(_ns_for()) is None
     # A section with no `spec` is equally not a source.
     monkeypatch.setattr(
@@ -626,9 +590,7 @@ def test_no_spec_anywhere_is_not_an_openapi_source(
         ({}, "m"),
     ],
 )
-def test_synthesize_description_reads_strings_only(
-    metadata: dict[str, Any], expected: str
-) -> None:
+def test_synthesize_description_reads_strings_only(metadata: dict[str, Any], expected: str) -> None:
     class _Module:
         def __init__(self, md: dict[str, Any]) -> None:
             self.metadata = md
@@ -646,9 +608,7 @@ def test_synthesize_description_reads_strings_only(
         ("derive_module_id", "the drop WARNING must name the remedy"),
     ],
 )
-def test_drop_warning_carries_the_canonical_facts(
-    needle: str, where: str, caplog: pytest.LogCaptureFixture
-) -> None:
+def test_drop_warning_carries_the_canonical_facts(needle: str, where: str, caplog: pytest.LogCaptureFixture) -> None:
     """Per the spec's Canonical diagnostic text table.
 
     "the derived module ID has a segment (`2fa`) apcore's registry cannot accept"
@@ -656,11 +616,7 @@ def test_drop_warning_carries_the_canonical_facts(
     for beginning with a digit, which is not guessable without the pattern. Rust
     carried both facts; Python and TypeScript did not.
     """
-    case = next(
-        c
-        for c in _FIXTURE["test_cases"]
-        if c["id"] == "projection_unprojectable_segment_dropped_with_warning"
-    )
+    case = next(c for c in _FIXTURE["test_cases"] if c["id"] == "projection_unprojectable_segment_dropped_with_warning")
     with caplog.at_level(logging.WARNING):
         _build(case)
 
@@ -678,11 +634,7 @@ def test_collision_error_says_nothing_was_registered() -> None:
     """
     from apcore import Registry
 
-    case = next(
-        c
-        for c in _FIXTURE["error_cases"]
-        if c["id"] == "id_collision_against_registry_rejected_atomically"
-    )
+    case = next(c for c in _FIXTURE["error_cases"] if c["id"] == "id_collision_against_registry_rejected_atomically")
     registry = Registry()
     for module_id in case["preexisting_registry_module_ids"]:
         _register_stub(registry, module_id)
@@ -693,8 +645,6 @@ def test_collision_error_says_nothing_was_registered() -> None:
 
 def test_no_base_url_error_says_what_breaks() -> None:
     """Naming the missing key is not the same as naming the consequence."""
-    case = next(
-        c for c in _FIXTURE["error_cases"] if c["id"] == "no_base_url_anywhere_rejected"
-    )
+    case = next(c for c in _FIXTURE["error_cases"] if c["id"] == "no_base_url_anywhere_rejected")
     with pytest.raises(ValueError, match="unknown host"):
         _build(case)

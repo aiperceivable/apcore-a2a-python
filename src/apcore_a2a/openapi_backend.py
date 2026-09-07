@@ -139,7 +139,7 @@ def resolve_spec_location(spec: Any, *, project_root: str | None = None) -> Any:
     """
     if spec is None:
         return None
-    if not isinstance(spec, (str, Path)):
+    if not isinstance(spec, str | Path):
         # An already-parsed document. Nothing to resolve.
         return spec
 
@@ -210,19 +210,13 @@ def _warn_unapproved_writes(
     unapproved = [
         m
         for m in modules
-        if str((getattr(m, "metadata", None) or {}).get("http_method", "")).upper()
-        in WRITE_METHODS
+        if str((getattr(m, "metadata", None) or {}).get("http_method", "")).upper() in WRITE_METHODS
         and not getattr(getattr(m, "annotations", None), "requires_approval", False)
     ]
     if not unapproved:
         return
 
-    methods = sorted(
-        {
-            str((getattr(m, "metadata", None) or {}).get("http_method", "")).upper()
-            for m in unapproved
-        }
-    )
+    methods = sorted({str((getattr(m, "metadata", None) or {}).get("http_method", "")).upper() for m in unapproved})
     ids = ", ".join(sorted(str(m.module_id) for m in unapproved)[:10])
 
     # Only ONE tier is decidable here, and it is decidable only when a caller has
@@ -305,9 +299,7 @@ def openapi_backend(
         raise ValueError("apcore-a2a.openapi.spec is required and resolved to nothing.")
 
     document = (
-        resolved
-        if not isinstance(resolved, (str, Path))
-        else load_spec(resolved, headers=headers, timeout=timeout)
+        resolved if not isinstance(resolved, str | Path) else load_spec(resolved, headers=headers, timeout=timeout)
     )
 
     dropped: list[tuple[str, str]] = []
@@ -374,8 +366,7 @@ def openapi_backend(
             logger.warning("apcore-a2a: %s: %s", module.module_id, warning)
     if not modules:
         logger.warning(
-            "apcore-a2a: the OpenAPI document produced no registrable modules; the "
-            "Agent Card will have no skills."
+            "apcore-a2a: the OpenAPI document produced no registrable modules; the " "Agent Card will have no skills."
         )
     if synthesized:
         logger.info(
@@ -455,7 +446,7 @@ def _as_float(value: Any, default: float) -> float:
     does not allow; both diverge from TypeScript and Rust, which ignore a
     non-number and fall back.
     """
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if isinstance(value, bool) or not isinstance(value, int | float):
         return default
     return float(value)
 
@@ -475,10 +466,7 @@ def build_openapi_backend_from_config(
     if not openapi_config:
         return None
     if not isinstance(openapi_config, dict):
-        raise ValueError(
-            "apcore-a2a.openapi must be a mapping, got "
-            f"{type(openapi_config).__name__}."
-        )
+        raise ValueError("apcore-a2a.openapi must be a mapping, got " f"{type(openapi_config).__name__}.")
 
     spec = openapi_config.get("spec")
     if spec is None or (isinstance(spec, str) and not spec.strip()):
@@ -499,8 +487,6 @@ def build_openapi_backend_from_config(
         registry=registry,
         has_other_backend_source=has_other_backend_source,
         project_root=_resolve_project_root(None),
-        acknowledge_unapproved_writes=_as_bool(
-            openapi_config.get("acknowledge_unapproved_writes"), False
-        ),
+        acknowledge_unapproved_writes=_as_bool(openapi_config.get("acknowledge_unapproved_writes"), False),
         governance_state=governance_state,
     )

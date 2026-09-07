@@ -166,9 +166,7 @@ def _merge_openapi_settings(args: argparse.Namespace) -> object | None:
     return merged if merged.get("spec") else None
 
 
-def _run_serve(
-    args: argparse.Namespace, openapi: object | None = None
-) -> None:
+def _run_serve(args: argparse.Namespace, openapi: object | None = None) -> None:
     """Execute the serve subcommand.
 
     ``openapi`` is the merged OpenAPI settings from :func:`_merge_openapi_settings`,
