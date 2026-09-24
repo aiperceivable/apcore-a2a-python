@@ -153,8 +153,19 @@ class ApCoreAgentExecutor(AgentExecutor):
             # global_deadline (0.22.0). apcore enforces it cooperatively at
             # pipeline Step 8 AND between streaming chunks (executor.stream),
             # which is the only timeout the streaming path would otherwise have.
-            # Stored as a monotonic deadline, matching apcore BuiltinContextStep.
-            global_deadline = time.monotonic() + self._execution_timeout
+            #
+            # Epoch seconds, per apcore >= 0.31.0 / D-99 (PROTOCOL_SPEC): the
+            # documented `Context.create` contract was always `time.time() +
+            # budget`, but apcore-python's own enforcement compared it against
+            # `time.monotonic()` until 0.31.0 — against that bug, an
+            # epoch-seconds deadline is ~1.8e9 versus a ~1e5 monotonic clock, so
+            # it never fires (silent, fail-open). This code used to work around
+            # that bug by passing a monotonic value instead of the documented
+            # one; apcore 0.31.0 fixes its own comparison to match the
+            # documented contract, so passing a monotonic value now reads as
+            # already-expired against `time.time()` and fails every call
+            # immediately. Must be `time.time()`, not `time.monotonic()`.
+            global_deadline = time.time() + self._execution_timeout
             apcore_ctx = Context.create(
                 identity=identity,
                 cancel_token=token,

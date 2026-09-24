@@ -37,8 +37,8 @@ It solves a common problem: **you've built AI capabilities with apcore modules, 
 ## Requirements
 
 - Python >= 3.11
-- `apcore` >= 0.30.0
-- `apcore-toolkit` >= 0.11.1 (the `openapi` extra additionally needs `apcore-toolkit[http-proxy]`)
+- `apcore` >= 0.31.0
+- `apcore-toolkit` >= 0.12.0 (the `openapi` extra additionally needs `apcore-toolkit[http-proxy]`)
 
 ---
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -313,6 +314,42 @@ async def test_on_state_change_not_called_when_none(mock_executor, mock_registry
     queue = await _make_queue()
     # Must not raise
     await executor.execute(ctx, queue)
+
+
+async def test_execute_passes_epoch_seconds_global_deadline(apcore_executor, monkeypatch):
+    """apcore >= 0.31.0 / D-99: `Context.create`'s `global_deadline` MUST be an
+    epoch-seconds value (`time.time() + budget`), not a `time.monotonic()`
+    one. apcore-python's own enforcement compared it against `time.monotonic()`
+    until 0.31.0, which made an epoch-seconds deadline never fire (silent,
+    fail-open); this executor used to pass a monotonic value to work around
+    that. Now that apcore compares against `time.time()`, a monotonic value
+    reads as already-expired and fails every call immediately — so this pins
+    the value against `time.time()`, not `time.monotonic()`.
+    """
+    import apcore
+
+    captured: dict = {}
+    real_create = apcore.Context.create
+
+    def _capture(*args, **kwargs):
+        captured.update(kwargs)
+        return real_create(*args, **kwargs)
+
+    monkeypatch.setattr(apcore.Context, "create", _capture)
+
+    ctx = _make_context(skill_id="image.resize", text='{"width": 800}')
+    queue = await _make_queue()
+    before = time.time()
+
+    await apcore_executor.execute(ctx, queue)
+
+    after = time.time()
+    assert "global_deadline" in captured
+    deadline = captured["global_deadline"]
+    # execution_timeout=5 on the apcore_executor fixture; allow generous slack
+    # for test scheduling jitter while still rejecting a monotonic-clock value
+    # (which would be off by ~time.time()'s epoch, i.e. billions of seconds).
+    assert before + 5 - 1 <= deadline <= after + 5 + 5
 
 
 async def test_execute_streams_even_when_apcore_ctx_is_none(mock_registry, monkeypatch):

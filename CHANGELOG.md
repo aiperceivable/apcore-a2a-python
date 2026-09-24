@@ -5,6 +5,64 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-09-24
+
+Minor release, version-aligned with the TypeScript and Rust SDKs. Raises the required floor to
+`apcore>=0.31.0` / `apcore-toolkit>=0.12.0` and fixes a `global_deadline` regression found while
+reviewing what those two releases changed.
+
+Suite: 467 tests (was 449), 7 skipped, `ruff check` clean.
+
+### Fixed
+
+- **`ApCoreAgentExecutor` passed `global_deadline` as a `time.monotonic()` value; apcore >= 0.31.0
+  requires epoch seconds (`time.time()`).** apcore's own `Context.create` contract was always
+  documented as `time.time() + budget` (PROTOCOL_SPEC), but apcore-python's internal enforcement
+  compared the deadline against `time.monotonic()` until 0.31.0 (apcore D-99) — against that bug, a
+  spec-conformant epoch-seconds deadline is ~1.8e9 versus a ~1e5 monotonic clock, so it silently
+  never fired (fail-open, no budget enforced at all). This executor worked around apcore's bug by
+  deliberately passing a monotonic value instead of the documented one, with a comment recording
+  the reason ("matching apcore BuiltinContextStep"). apcore 0.31.0 fixes its own comparison to
+  match the documented contract, which flips the failure mode: a monotonic value now reads as
+  already-expired against `time.time()`, so every module call would fail immediately. Fixed to pass
+  `time.time() + execution_timeout`, per the documented contract apcore now actually honors. New
+  regression test: `tests/server/test_executor.py::test_execute_passes_epoch_seconds_global_deadline`.
+  Found by grepping this package's apcore-facing code against the apcore 0.31.0 changelog, the same
+  process that found the D-103 identity-synthesis divergence in `apcore-a2a-rust`'s `acl_context()`
+  (apcore-python was never affected by D-103 — `card_visibility.py::_acl_context` already delegated
+  identity handling straight to `Context.create`, with no manual synthesis of its own).
+
+### Changed — dependency floor
+
+- **Required `apcore` floor raised to 0.31.0** (was `>=0.30.0`) and **required `apcore-toolkit`
+  floor raised to 0.12.0** (was `>=0.11.1`, both the base dependency and the `openapi` extra).
+  apcore 0.31.0 is two joined audit cycles (`PROTOCOL_SPEC` v1.37.0 → v1.59.0) settling 54
+  cross-language divergences, five of them security defects. Beyond the `global_deadline` fix
+  above, every other `apcore.*`/`apcore_toolkit.*` surface this package uses was checked against
+  both changelogs' breaking-change sections and needs no change:
+  - `governance_state()` (`server/factory.py`, `openapi_backend.py`) — apcore 0.31.0's D-125 union
+    fix is internal to apcore's own gate; this package only reads the result.
+  - `ACL.check_access` (`adapters/card_visibility.py`) — unaffected; D-96/D-97's approval-bypass
+    union fix is internal to apcore's gate, not the `check_access` contract.
+  - `apcore_toolkit.deep_resolve_refs` (`adapters/schema.py`) — fully delegates $ref resolution to
+    the shared toolkit helper, which got the $ref-sibling-key security fix (the same defect class as
+    apcore's D-98/D-124) directly in 0.12.0; this package has no independent ref-resolution or
+    redaction logic of its own to carry the same bug (contrast `apcore-mcp-python`, which had an
+    independent `_inline_refs` with the identical latent bug, fixed in its own 0.22.0).
+  - `sys_modules` per-group registration (`server/factory.py`) — apcore 0.31.0 makes the four
+    per-group `sys_modules.*.enabled` flags actually enforced (previously ignored), but
+    `apcore.sys_modules.registration.register_sys_modules` supplies `True` as its own explicit
+    default for each when absent from the `Config`, so this package's `Config(data=sys_data)` call
+    (which only sets the top-level `sys_modules.enabled`) is unaffected.
+  - No usage of `ContextFactory.create_context` (D-76), `TaskStoreError` (D-92, falls through this
+    package's generic "unknown apcore error code" handler safely either way), `Context.logger`
+    (deprecated), `ExtensionManager` (D-78), registry event subscriptions (D-80), or `BindingLoader`
+    (toolkit).
+- The monorepo-root `uv.lock` already resolved `apcore` and `apcore-toolkit` to 0.31.0/0.12.0 via
+  their workspace-editable local paths before this change (workspace sources bypass the version
+  specifier in `requires-dist` entirely), so it needed no regeneration. This package has no lock
+  file of its own.
+
 ## [0.7.0] - 2026-09-07
 
 Minor release, version-aligned with the TypeScript and Rust SDKs. Ships the **OpenAPI
