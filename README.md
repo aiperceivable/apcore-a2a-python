@@ -38,7 +38,7 @@ It solves a common problem: **you've built AI capabilities with apcore modules, 
 
 - Python >= 3.11
 - `apcore` >= 0.31.0
-- `apcore-toolkit` >= 0.12.0 (the `openapi` extra additionally needs `apcore-toolkit[http-proxy]`)
+- `apcore-toolkit` >= 0.13.0 (the `openapi` extra additionally needs `apcore-toolkit[http-proxy]`)
 
 ---
 
@@ -89,6 +89,12 @@ registry = openapi_backend(
 )
 serve(registry)
 ```
+
+Each skill's ID is the module ID apcore-toolkit (>= 0.13) derives, already in apcore's ID
+alphabet: `operationId: listPets` under prefix `petstore` becomes `petstore.list_pets`, and
+`GET /pets/{petId}` without an `operationId` becomes `petstore.pets.pet_id.get`. An operation
+whose ID still has a segment beginning with a digit (`/v1/2fa`) is skipped with a warning —
+name it with a `derive_module_id` or `transform_module` hook.
 
 > [!WARNING]
 > An OpenAPI document describes an API's *shape*, not the *consequences* of calling it, so

@@ -2,20 +2,28 @@
 
 Pipeline::
 
-    load_spec -> OpenAPIScanner.scan -> [repair] -> HTTPProxyRegistryWriter.write -> Registry
+    load_spec -> OpenAPIScanner.scan -> [skip illegal IDs, repair descriptions]
+              -> HTTPProxyRegistryWriter.write -> Registry
 
 The scanner and the writer live in apcore-toolkit; this module composes them and
-adds the two repairs the composition needs, neither of which the toolkit can make
-on its own:
+adds the two things the composition needs on top:
 
-* **FR-OAS-002 module-ID projection.** The toolkit sanitizes a derived ID into
-  ``[A-Za-z0-9_.-]``; apcore's registry accepts only
-  ``^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$``. Without the projection the canonical
-  Swagger Petstore scans cleanly and registers nothing.
+* **FR-OAS-002 registry-legal module IDs.** apcore-toolkit >= 0.13.0 emits every
+  ``module_id`` in apcore's Canonical ID alphabet (camelCase split into
+  snake_case words, other characters replaced by ``_``, a legal ID never
+  rewritten), after ``base_path_prefix`` and the hooks — so this module registers
+  the emitted ID unchanged. The one thing the toolkit will not repair is a
+  segment that begins with a digit (``/v1/2fa`` -> ``v1.2fa.get``): such a module
+  is skipped before the writer, with a WARNING naming the ID and the segment.
 * **FR-OAS-003 description repair.** An operation with neither ``summary`` nor
   ``description`` yields ``""``, and ``AgentCardBuilder`` skips a module whose
   description is empty — so the operation would vanish from the Agent Card with
   no diagnostic.
+
+Both run on the modules ``scan`` *returns* — after the caller's own
+``transform_module`` hook, the toolkit's normalisation, its filters and its
+deduplication — so every diagnostic names the ID that actually reaches the
+Agent Card.
 
 See ``apcore-a2a/docs/features/openapi-backend.md`` for the specification and
 ``conformance/fixtures/openapi_backend.json`` for the shared contract.
@@ -26,7 +34,9 @@ from __future__ import annotations
 import logging
 import os
 import re
+import warnings
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -44,7 +54,8 @@ __all__ = [
 
 #: An apcore module-ID segment. Enforced by ``Registry.register`` and again by
 #: ``Executor.call``; a segment may not begin with a digit, which is why some
-#: derived IDs cannot be repaired at all.
+#: derived IDs cannot be repaired at all. The FR-OAS-002 skip policy tests every
+#: segment of an emitted ID against this.
 #:
 #: Matched with :meth:`re.fullmatch`, never :meth:`re.match`. Python's ``$`` also
 #: matches *before* a trailing newline, so ``re.match`` would accept ``"abc\n"``
@@ -62,23 +73,42 @@ _URL_SCHEMES = ("http://", "https://")
 def project_module_id(module_id: str) -> str | None:
     """Project a toolkit-derived module ID into apcore's registry alphabet.
 
+    .. deprecated::
+        apcore-toolkit >= 0.13 emits every ``module_id`` in apcore's Canonical ID
+        alphabet itself, so this projection is no longer needed and the backend
+        no longer calls it. It will be removed in a later minor release. Note that
+        it does not reproduce the toolkit's naming: it lowercases without
+        splitting words (``listPets`` -> ``listpets``, where the toolkit emits
+        ``list_pets``).
+
     Lowercase, then ``-`` -> ``_``. Returns ``None`` when the result still has a
     segment apcore would reject — such an ID cannot be repaired without inventing
-    one, so the module is dropped and reported by the caller.
+    one.
     """
+    warnings.warn(
+        "project_module_id is deprecated: apcore-toolkit >= 0.13 emits module IDs in "
+        "apcore's Canonical ID alphabet, so the projection is no longer needed. It "
+        "will be removed in a later minor release.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     candidate = module_id.lower().replace("-", "_")
     if all(MODULE_ID_SEGMENT.fullmatch(seg) for seg in candidate.split(".")):
         return candidate
     return None
 
 
-def _offending_segment(module_id: str) -> str:
-    """The first segment of a projected ID that apcore would still reject."""
-    candidate = module_id.lower().replace("-", "_")
-    for seg in candidate.split("."):
+def _illegal_segment(module_id: str) -> str | None:
+    """The first segment of ``module_id`` apcore's registry would reject, else ``None``.
+
+    Tested on the ID exactly as the scanner emitted it — never a projection of it.
+    An empty ID yields the empty segment ``""``, matching the toolkit's own
+    legality warning.
+    """
+    for seg in module_id.split("."):
         if not MODULE_ID_SEGMENT.fullmatch(seg):
             return seg
-    return candidate
+    return None
 
 
 def synthesize_description(module: Any) -> str:
@@ -302,43 +332,10 @@ def openapi_backend(
         resolved if not isinstance(resolved, str | Path) else load_spec(resolved, headers=headers, timeout=timeout)
     )
 
-    dropped: list[tuple[str, str]] = []
-    synthesized: list[str] = []
-
-    def _repair(module: Any) -> Any:
-        # A caller's own hook runs FIRST so that the invariants below hold
-        # unconditionally, whatever it returns.
-        if transform_module is not None:
-            module = transform_module(module)
-            if module is None:
-                return None
-
-        from dataclasses import replace
-
-        # FR-OAS-003: repair the description before the module can reach a card
-        # filter that would silently drop it.
-        was_synthesized = not str(getattr(module, "description", "") or "").strip()
-        if was_synthesized:
-            module = replace(module, description=synthesize_description(module))
-
-        # FR-OAS-002, LAST: so "every registered module ID is apcore-legal" holds
-        # unconditionally. Runs before the scanner's own deduplicate_ids, because
-        # lowercasing can CREATE a collision the document did not have.
-        projected = project_module_id(str(module.module_id))
-        if projected is None:
-            dropped.append((str(module.module_id), _offending_segment(str(module.module_id))))
-            return None
-        if projected != module.module_id:
-            module = replace(module, module_id=projected)
-
-        # Report the PROJECTED id: it is the one that reaches the Agent Card, and a
-        # diagnostic naming the pre-projection id sends the operator looking for a
-        # skill that does not exist.
-        if was_synthesized:
-            synthesized.append(projected)
-        return module
-
-    modules = OpenAPIScanner().scan(
+    # The caller's own transform_module is handed to the scanner as it is, so it
+    # runs FIRST: everything below operates on what `scan` returns, after that
+    # hook, the toolkit's normalisation, its filters and its deduplication.
+    scanned = OpenAPIScanner().scan(
         document,
         include=include,
         exclude=exclude,
@@ -346,21 +343,49 @@ def openapi_backend(
         include_deprecated=include_deprecated,
         transform_operation=transform_operation,
         derive_module_id=derive_module_id,
-        transform_module=_repair,
+        transform_module=transform_module,
     )
 
-    # A transform_module returning None drops the module silently, so reporting is
-    # this module's responsibility and cannot be delegated to the scanner.
-    for derived_id, segment in dropped:
+    skipped: list[tuple[str, str]] = []
+    synthesized: list[str] = []
+    modules: list[Any] = []
+    for module in scanned:
+        module_id = str(module.module_id)
+
+        # FR-OAS-002: apcore-toolkit >= 0.13 emits the Canonical ID alphabet, so
+        # the emitted ID is registered unchanged — never projected again. It
+        # leaves exactly one thing unrepaired (a segment beginning with a digit,
+        # or an empty ID from a hook), and that module is skipped HERE, before
+        # the writer: handed to the writer, apcore's registry would reject it as
+        # a write failure, and every diagnostic below would count it. Checked on
+        # the returned ID, never inside transform_module, where a hook's
+        # `MyThing` has not yet been normalised to `my_thing`.
+        segment = _illegal_segment(module_id)
+        if segment is not None:
+            skipped.append((module_id, segment))
+            continue
+
+        # FR-OAS-003: repair the description before the module can reach a card
+        # filter that would silently drop it. Recorded under the EMITTED id — the
+        # one on the Agent Card, dedup suffix included.
+        if not str(getattr(module, "description", "") or "").strip():
+            module = replace(module, description=synthesize_description(module))
+            synthesized.append(module_id)
+        modules.append(module)
+
+    for module_id, segment in skipped:
         logger.warning(
             "apcore-a2a: skipping OpenAPI operation %r — the derived module ID has a "
             "segment (%r) apcore's registry cannot accept (it must match "
             "^[a-z][a-z0-9_]*$), and it cannot be repaired without inventing an ID. "
             "Supply a derive_module_id or transform_module hook to name this "
             "operation yourself.",
-            derived_id,
+            module_id,
             segment,
         )
+    # Scanner warnings are re-emitted for the modules that will register. A
+    # skipped module's own legality warning from the toolkit says what the skip
+    # WARNING above already said, so it is not repeated.
     for module in modules:
         for warning in getattr(module, "warnings", None) or []:
             logger.warning("apcore-a2a: %s: %s", module.module_id, warning)
@@ -374,7 +399,7 @@ def openapi_backend(
             '"{METHOD} {path}" description was synthesized so they appear on the Agent '
             "Card. Affected: %s",
             len(synthesized),
-            len(modules) + len(dropped),
+            len(scanned),
             ", ".join(sorted(synthesized)),
         )
 

@@ -6,13 +6,17 @@ TypeScript and Rust runners). Builds a Registry from each document through
 module set, the repaired descriptions, the emitted diagnostics, and the resulting
 Agent Card.
 
-The scanner's own derivation is pinned by apcore-toolkit's corpus, not here. What
-this driver checks is everything the binding adds on top.
+The scanner's own derivation — including the normalisation of every module ID
+into apcore's Canonical ID alphabet (apcore-toolkit >= 0.13.0) — is pinned by
+apcore-toolkit's corpus, not here. What this driver checks is everything the
+binding adds on top.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import logging
+from collections.abc import Callable
 from typing import Any
 
 import pytest
@@ -21,7 +25,6 @@ pytest.importorskip("apcore_toolkit")
 
 from apcore_a2a.openapi_backend import (  # noqa: E402
     openapi_backend,
-    project_module_id,
     resolve_spec_location,
 )
 
@@ -34,6 +37,31 @@ def _ids(case: dict[str, Any]) -> str:
     return case["id"]
 
 
+#: Hooks the fixture names by `hooks.transform_module`, implemented here. The
+#: fixture's notes define each one.
+_TRANSFORM_MODULE_HOOKS: dict[str, Callable[[Any], Any]] = {
+    "rename_to_mixed_case_id": lambda module: dataclasses.replace(module, module_id="MyThing"),
+}
+
+
+def _hook_options(case: dict[str, Any]) -> dict[str, Any]:
+    """Backend options for the hooks a case names.
+
+    An unknown name fails the case: ignoring it would silently run the hook-free
+    path and pass a case that asserts what a hook does.
+    """
+    hooks = dict(case.get("hooks") or {})
+    options: dict[str, Any] = {}
+    name = hooks.pop("transform_module", None)
+    if name is not None:
+        if name not in _TRANSFORM_MODULE_HOOKS:
+            pytest.fail(f"{case['id']}: the fixture names a transform_module hook this driver lacks: {name!r}")
+        options["transform_module"] = _TRANSFORM_MODULE_HOOKS[name]
+    if hooks:
+        pytest.fail(f"{case['id']}: the fixture names hooks this driver does not implement: {sorted(hooks)}")
+    return options
+
+
 def _build(case: dict[str, Any], **overrides: Any) -> Any:
     options = dict(case.get("options") or {})
     # The fixture spells a pseudo-option that names the *situation*, not a kwarg.
@@ -44,6 +72,7 @@ def _build(case: dict[str, Any], **overrides: Any) -> Any:
         case["document"],
         has_other_backend_source=other_source,
         **options,
+        **_hook_options(case),
         **overrides,
     )
 
@@ -84,8 +113,8 @@ def test_modules(case: dict[str, Any], caplog: pytest.LogCaptureFixture) -> None
             got = getattr(definition.annotations, field, None)
             assert got == want, f"{spec['module_id']}.{field}: {got!r} != {want!r}"
 
-    # A dropped operation must be reported at WARNING: the projection runs inside
-    # a transform_module hook, and a hook returning None drops it silently.
+    # A skipped operation must be reported at WARNING, naming the emitted ID and
+    # the offending segment: an implementation that silently drops it fails here.
     warnings = _lines_at(caplog, logging.WARNING)
     for drop in case.get("expected_dropped") or []:
         line = next(
@@ -104,6 +133,19 @@ def test_modules(case: dict[str, Any], caplog: pytest.LogCaptureFixture) -> None
     for substring in case.get("expected_warning_substrings") or []:
         assert any(substring in w for w in warnings), f"missing {substring!r} in WARNING lines: {warnings}"
 
+    # A per-module scanner warning (e.g. the dedup rename) must reach the operator.
+    for spec in expected:
+        if "warnings_contain" in spec:
+            assert any(
+                spec["warnings_contain"] in w and spec["module_id"] in w for w in warnings
+            ), f"no WARNING re-emits {spec['warnings_contain']!r} for {spec['module_id']!r}: {warnings}"
+
+    # Skipping an illegal ID before the writer, not leaving apcore's registry to
+    # reject it: the rejection would also leave it unregistered, but as an ERROR.
+    if case.get("expected_no_error_logs"):
+        errors = [r.getMessage() for r in caplog.records if r.levelno >= logging.ERROR]
+        assert not errors, f"expected no ERROR lines, got {errors}"
+
     for module_id in case.get("expected_on_agent_card") or []:
         definition = registry.get_definition(module_id)
         assert (
@@ -120,10 +162,10 @@ def test_description_repair_flag(case: dict[str, Any], caplog: pytest.LogCapture
     """The INFO line must name every operation whose description was synthesized.
 
     The assertion is scoped to the synthesis line itself, not to the whole log.
-    apcore-toolkit's writer emits its own ``Registered HTTP proxy: <projected id>``
-    line, so a naive ``module_id in caplog.text`` is satisfied by that and passes
-    even when the synthesis report names the **pre**-projection id — which is
-    exactly the defect FR-OAS-003 criterion 5 exists to forbid.
+    apcore-toolkit's writer emits its own ``Registered HTTP proxy: <id>`` line, so a
+    naive ``module_id in caplog.text`` is satisfied by that and passes even when the
+    synthesis report names some other id — which is exactly the defect FR-OAS-003
+    criterion 5 exists to forbid.
     """
     with caplog.at_level(logging.DEBUG):
         registry = _build(case)
@@ -137,11 +179,17 @@ def test_description_repair_flag(case: dict[str, Any], caplog: pytest.LogCapture
             assert len(synthesis) == 1, f"expected exactly one synthesis INFO line, got {synthesis}"
             assert spec["module_id"] in synthesis[0], (
                 f"the synthesis report does not name {spec['module_id']!r} (the "
-                f"post-projection id that reaches the card): {synthesis[0]!r}"
+                f"emitted id that reaches the card): {synthesis[0]!r}"
             )
         else:
             assert not synthesis, f"the repair fired when it should not have: {synthesis}"
         assert registry.get_definition(spec["module_id"]).description == spec["description"]
+
+    report = case.get("expected_synthesis_report") or {}
+    for needle in report.get("contains") or []:
+        assert synthesis and needle in synthesis[0], f"the synthesis report lacks {needle!r}: {synthesis}"
+    for needle in report.get("excludes") or []:
+        assert synthesis and needle not in synthesis[0], f"the synthesis report names {needle!r}: {synthesis}"
 
 
 # --------------------------------------------------------------------------
@@ -299,7 +347,7 @@ def _register_stub(registry: Any, module_id: str) -> None:
 
 
 # --------------------------------------------------------------------------
-# projection unit coverage (FR-OAS-002)
+# FR-OAS-002 unit coverage — registry-legal IDs, and the deprecated projection
 # --------------------------------------------------------------------------
 
 
@@ -313,15 +361,115 @@ def _register_stub(registry: Any, module_id: str) -> None:
         ("Users.UserId.Get", "users.userid.get"),
         ("9lives", None),
         # Python's `$` also matches before a trailing newline, so `re.match` would
-        # accept this and register a module whose ID carries one. Reachable from a
-        # caller's own `derive_module_id` hook, a supported public option.
-        # TypeScript and Rust both reject it.
+        # accept this and register a module whose ID carries one. TypeScript and
+        # Rust both reject it.
         ("abc\n", None),
         ("a.b\n", None),
     ],
 )
-def test_project_module_id(raw: str, expected: str | None) -> None:
-    assert project_module_id(raw) == expected
+def test_project_module_id_is_deprecated_but_unchanged(raw: str, expected: str | None) -> None:
+    """Kept for compatibility, behaviour unchanged, and warning on every call."""
+    from apcore_a2a.openapi_backend import project_module_id
+
+    with pytest.warns(DeprecationWarning, match="apcore-toolkit >= 0.13"):
+        assert project_module_id(raw) == expected
+
+
+def test_the_backend_never_projects(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nothing internal may call the deprecated projection any more.
+
+    On apcore-toolkit >= 0.13 output it is dead work — lowercasing and `-` -> `_`
+    are the identity on a legal ID — and an internal call would fire the
+    function's own DeprecationWarning on every backend start. Where it was NOT a
+    no-op (inside `transform_module`, before the toolkit's final normalisation)
+    it produced a different ID than the toolkit: `MyThing` -> `mything`, not
+    `my_thing`.
+    """
+    import importlib
+
+    # `apcore_a2a` re-exports the `openapi_backend` FUNCTION, which shadows the
+    # submodule as a package attribute; resolve the module itself.
+    backend = importlib.import_module("apcore_a2a.openapi_backend")
+
+    def _forbidden(module_id: str) -> str | None:
+        raise AssertionError(f"project_module_id was called with {module_id!r}")
+
+    monkeypatch.setattr(backend, "project_module_id", _forbidden)
+    case = next(c for c in _FIXTURE["test_cases"] if c["id"] == "projection_runs_before_deduplication")
+    registry = _build(case)
+    assert _registry_ids(registry) == ["list_pets", "list_pets_2"]
+
+
+@pytest.mark.parametrize("hook_id", ["", "abc\n", "v1.2fa", "Ab.9x"])
+def test_an_illegal_hook_id_is_skipped_with_its_segment(hook_id: str, caplog: pytest.LogCaptureFixture) -> None:
+    """The skip applies to whatever the scanner emitted, hook output included.
+
+    An empty ID (only a hook can produce one) names the empty segment, as the
+    toolkit's own legality warning does. `abc\\n` normalises to `abc_` in the
+    toolkit and so is NOT skipped — the trailing-newline trap lives only in a
+    `re.match` legality test, which is why the check is a fullmatch.
+    """
+    document = {
+        "openapi": "3.0.3",
+        "info": {"title": "t", "version": "1"},
+        "servers": [{"url": "https://api.example.com"}],
+        "paths": {"/pets": {"get": {"operationId": "listPets", "summary": "s", "responses": {}}}},
+    }
+    with caplog.at_level(logging.WARNING):
+        registry = openapi_backend(document, derive_module_id=lambda *_: hook_id)
+
+    skips = [w for w in _lines_at(caplog, logging.WARNING) if "skipping OpenAPI operation" in w]
+    registered = _registry_ids(registry)
+    if hook_id == "abc\n":
+        assert registered == ["abc_"] and not skips
+        return
+    assert registered == []
+    assert len(skips) == 1, skips
+
+
+def test_a_skipped_module_reaches_no_later_diagnostic(caplog: pytest.LogCaptureFixture) -> None:
+    """Skipped before the writer, a module is counted by nothing downstream.
+
+    An undocumented `POST /v1/2fa` is the worst case: were it handed to the writer
+    instead, the synthesis report would count it, FR-OAS-005 would warn about a
+    write operation that is not on the card, and the zero-modules warning — the
+    only true statement — would not fire.
+    """
+    document = {
+        "openapi": "3.0.3",
+        "info": {"title": "t", "version": "1"},
+        "servers": [{"url": "https://api.example.com"}],
+        "paths": {"/v1/2fa": {"post": {"responses": {"200": {"description": "ok"}}}}},
+    }
+    with caplog.at_level(logging.DEBUG):
+        registry = openapi_backend(document)
+
+    assert _registry_ids(registry) == []
+    warnings = _lines_at(caplog, logging.WARNING)
+    assert any("skipping OpenAPI operation 'v1.2fa.post'" in w for w in warnings), warnings
+    assert any("no registrable modules" in w for w in warnings), warnings
+    assert not any("PUBLIC Agent Card" in w for w in warnings), warnings
+    assert not any("synthesized" in line for line in _lines_at(caplog, logging.INFO))
+    assert not _lines_at(caplog, logging.ERROR)
+    # The toolkit's own legality warning is not re-emitted beside the skip line.
+    assert not any("is not a legal apcore module ID" in w for w in warnings), warnings
+
+
+def test_the_caller_hook_runs_before_the_repair() -> None:
+    """A hook that clears the description still gets it repaired, and a hook's
+    mixed-case, hyphenated ID is normalised by the toolkit rather than skipped."""
+    document = {
+        "openapi": "3.0.3",
+        "info": {"title": "t", "version": "1"},
+        "servers": [{"url": "https://api.example.com"}],
+        "paths": {"/pets": {"get": {"operationId": "listPets", "summary": "List pets", "responses": {}}}},
+    }
+    registry = openapi_backend(
+        document,
+        transform_module=lambda m: dataclasses.replace(m, module_id="Pet-Store.ListPets", description="   "),
+    )
+    assert _registry_ids(registry) == ["pet_store.list_pets"]
+    assert registry.get_definition("pet_store.list_pets").description == "GET /pets"
 
 
 @pytest.mark.parametrize(
