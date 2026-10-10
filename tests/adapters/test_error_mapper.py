@@ -244,3 +244,29 @@ def test_is_server_side_schema_error_matches_only_the_output_direction():
     # this function.
     assert not is_server_side_schema_error("Configuration validation failed (1 error(s)):")
     assert not is_server_side_schema_error("width: must be integer")
+
+
+def test_native_validation_preserves_json_pointer(mapper):
+    from apcore.schema.validator import SchemaValidator
+    from pydantic import BaseModel
+
+    class Item(BaseModel):
+        width: int
+
+    class Inputs(BaseModel):
+        items: list[Item]
+
+    with pytest.raises(SchemaValidationError) as caught:
+        SchemaValidator().validate_input({"items": [{"width": "bad"}]}, Inputs)
+    assert caught.value.details["errors"][0]["path"] == "/items/0/width"
+    result = mapper.to_jsonrpc_error(caught.value)
+    assert result["code"] == -32602
+    assert "/items/0/width [type]:" in result["message"]
+    assert set(result) == {"code", "message"}
+
+
+def test_canonical_validation_message_is_bounded(mapper):
+    err = SchemaValidationError(errors=[{"path": "/width", "keyword": "type", "message": "\u754c" * 600}])
+    message = mapper.to_jsonrpc_error(err)["message"]
+    assert message.startswith("/width [type]: ")
+    assert len(message) == 500

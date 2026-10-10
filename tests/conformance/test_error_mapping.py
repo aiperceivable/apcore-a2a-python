@@ -39,6 +39,12 @@ def _build_exception(spec: dict[str, Any]) -> Exception:
     if name == "RuntimeError":
         # An exception with no apcore .code -> the mapper's catch-all arm.
         return RuntimeError(spec.get("message", "boom"))
+    if name == "SchemaValidationError" and "details" in spec:
+        return ModuleError(
+            ErrorCodes.SCHEMA_VALIDATION_ERROR,
+            spec.get("message", "Input validation failed"),
+            details=spec["details"],
+        )
     if name == "SchemaValidationError":
         errors = spec.get("errors", {})
         message = "; ".join(f"{k}: {v}" for k, v in errors.items()) or "validation failed"

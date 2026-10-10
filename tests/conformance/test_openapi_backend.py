@@ -664,9 +664,7 @@ def test_an_absent_store_true_flag_does_not_override_the_config(
 
     monkeypatch.setattr(
         "apcore_a2a._config.get_a2a_setting",
-        lambda key, fallback=None: (
-            {"spec": "./s.json", "include_deprecated": False} if key == "openapi" else fallback
-        ),
+        lambda key, fallback=None: {"spec": "./s.json", "include_deprecated": False} if key == "openapi" else fallback,
     )
 
     absent = cli._merge_openapi_settings(_ns_for())
@@ -696,7 +694,7 @@ def test_a_wrong_shaped_section_is_not_swallowed(
 
     monkeypatch.setattr(
         "apcore_a2a._config.get_a2a_setting",
-        lambda key, fallback=None: ("./spec.json" if key == "openapi" else fallback),
+        lambda key, fallback=None: "./spec.json" if key == "openapi" else fallback,
     )
 
     merged = cli._merge_openapi_settings(_ns_for())
@@ -717,7 +715,7 @@ def test_no_spec_anywhere_is_not_an_openapi_source(
     # A section with no `spec` is equally not a source.
     monkeypatch.setattr(
         "apcore_a2a._config.get_a2a_setting",
-        lambda key, fallback=None: ({"prefix": "p"} if key == "openapi" else fallback),
+        lambda key, fallback=None: {"prefix": "p"} if key == "openapi" else fallback,
     )
     assert cli._merge_openapi_settings(_ns_for()) is None
 

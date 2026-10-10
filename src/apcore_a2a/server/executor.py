@@ -392,7 +392,7 @@ class ApCoreAgentExecutor(AgentExecutor):
         - internal / unrecognized errors keep the fixed ``"Internal server
           error"`` (srs FR-ERR-004 / FR-ERR-008, locked by the shared
           ``error_mapping.json`` and ``streaming_events.json`` fixtures);
-        - ``ACL_DENIED`` stays masked as ``"Task not found"`` (srs FR-ERR-003);
+        - ``ACL_DENIED`` carries the fixed ``"Access denied"`` message (srs FR-ERR-003);
         - caller-fixable classes (schema validation, invalid input, unknown
           module) carry their sanitized detail, which srs FR-ERR-002 requires
           precisely so a caller "can correct their input without guessing".

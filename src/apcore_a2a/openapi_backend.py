@@ -391,7 +391,7 @@ def openapi_backend(
             logger.warning("apcore-a2a: %s: %s", module.module_id, warning)
     if not modules:
         logger.warning(
-            "apcore-a2a: the OpenAPI document produced no registrable modules; the " "Agent Card will have no skills."
+            "apcore-a2a: the OpenAPI document produced no registrable modules; the Agent Card will have no skills."
         )
     if synthesized:
         logger.info(
@@ -491,7 +491,7 @@ def build_openapi_backend_from_config(
     if not openapi_config:
         return None
     if not isinstance(openapi_config, dict):
-        raise ValueError("apcore-a2a.openapi must be a mapping, got " f"{type(openapi_config).__name__}.")
+        raise ValueError(f"apcore-a2a.openapi must be a mapping, got {type(openapi_config).__name__}.")
 
     spec = openapi_config.get("spec")
     if spec is None or (isinstance(spec, str) and not spec.strip()):

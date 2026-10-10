@@ -132,8 +132,7 @@ class ErrorMapper:
             # caller can do nothing about — see is_server_side_schema_error.
             if is_server_side_schema_error(getattr(error, "message", str(error))):
                 return {"code": _CODE_INTERNAL_ERROR, "message": "Internal server error"}
-            message = self._sanitize_message(getattr(error, "message", str(error)))
-            return {"code": _CODE_INVALID_PARAMS, "message": message}
+            return {"code": _CODE_INVALID_PARAMS, "message": _schema_error_message(error)}
 
         if error_code == ErrorCodes.GENERAL_INVALID_INPUT:
             description = self._sanitize_message(getattr(error, "message", str(error)))
@@ -272,6 +271,27 @@ def carries_caller_detail(error: Exception, disclose_refusal_reason: bool = Fals
     if error_code in _GOVERNANCE_REFUSALS:
         return disclose_refusal_reason
     return False
+
+
+def _schema_error_message(error: Exception) -> str:
+    """Preserve canonical JSON Pointers without treating them as file paths."""
+    details = getattr(error, "details", None)
+    errors = details.get("errors") if isinstance(details, dict) else None
+    diagnostics: list[str] = []
+    if isinstance(errors, list):
+        for entry in errors:
+            if not isinstance(entry, dict) or not all(
+                isinstance(entry.get(key), str) for key in ("path", "keyword", "message")
+            ):
+                continue
+            # Only the structured pointer bypasses filesystem-path redaction.
+            path = entry["path"] or "<root>"
+            keyword = sanitize_message(entry["keyword"])
+            message = sanitize_message(entry["message"])
+            diagnostics.append(f"{path} [{keyword}]: {message}")
+    if diagnostics:
+        return "; ".join(diagnostics)[:500]
+    return sanitize_message(getattr(error, "message", str(error)))
 
 
 def sanitize_message(message: str) -> str:

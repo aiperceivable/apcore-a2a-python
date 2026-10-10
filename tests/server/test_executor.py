@@ -438,6 +438,16 @@ async def test_execute_invalid_input_error_reaches_the_caller(apcore_executor, m
     assert "'1' and 'l' cannot be used together" in text
 
 
+async def test_execute_canonical_schema_diagnostics_preserve_pointer(apcore_executor, mock_executor):
+    err = ModuleError(
+        code=ErrorCodes.SCHEMA_VALIDATION_ERROR,
+        message="Input validation failed",
+        details={"errors": [{"path": "/items/0/width", "keyword": "type", "message": "must be integer"}]},
+    )
+    text = await _failed_text(apcore_executor, mock_executor, err)
+    assert "/items/0/width [type]: must be integer" in text
+
+
 async def test_execute_schema_validation_error_names_the_field(apcore_executor, mock_executor):
     err = ModuleError(code=ErrorCodes.SCHEMA_VALIDATION_ERROR, message="width: must be integer")
     text = await _failed_text(apcore_executor, mock_executor, err)
