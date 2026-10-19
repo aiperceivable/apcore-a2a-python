@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.4] - 2026-10-19
+
+### Fixed
+
+- Build an apcore Executor when `serve()` or `async_serve()` receives a bare
+  Registry instead of forwarding the Registry as an executor. Preserve an
+  attached executor and its configured middleware/governance; reject invalid
+  attached executors before server startup. Real Registry and A2A SendMessage
+  regressions cover registry, explicit executor and attached executor inputs.
+  Tracked in [#2](https://github.com/aiperceivable/apcore-a2a-python/issues/2).
+
 ## [0.8.2] - 2026-10-10
 
 ### Changed

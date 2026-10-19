@@ -35,10 +35,9 @@ def _resolve_registry_and_executor(
       ``obj.registry``).
 
     Returns:
-        (registry, executor) tuple.  When only a Registry is supplied the
-        executor is the registry itself (the factory only calls ``call_async``
-        on the executor, so it must be present on the registry OR the registry
-        is used as a fallback duck-type executor stub).
+        (registry, executor) tuple. A bare Registry is wrapped with
+        ``Executor.from_registry()``. An attached ``registry.executor`` is
+        preserved when it provides a callable ``call_async`` method.
 
     Raises:
         TypeError: if the object matches neither shape.
@@ -71,9 +70,13 @@ def _resolve_registry_and_executor(
     if has_list and has_get_def:
         # It looks like a Registry (and does not have call_async)
         registry = registry_or_executor
-        # Use a dedicated .executor if available, otherwise use registry itself
-        # as the executor duck-type (the factory only needs call_async on it).
-        executor = getattr(registry_or_executor, "executor", registry_or_executor)
+        executor = getattr(registry, "executor", None)
+        if executor is None:
+            from apcore.executor import Executor
+
+            executor = Executor.from_registry(registry)
+        elif not callable(getattr(executor, "call_async", None)):
+            raise TypeError("Expected apcore Executor: registry.executor must provide callable call_async")
         return registry, executor
 
     raise TypeError("Expected apcore Registry, Executor, or path string")

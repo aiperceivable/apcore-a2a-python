@@ -10,8 +10,10 @@ from dataclasses import dataclass, field
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 from a2a.server.tasks.inmemory_task_store import InMemoryTaskStore
+from apcore import Executor, Registry
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
@@ -478,3 +480,97 @@ async def test_async_serve_with_empty_path_raises_value_error(tmp_path):
 
     with pytest.raises(ValueError, match="zero modules"):
         await async_serve(str(empty_dir))
+
+
+class _EchoModule:
+    description = "Echo the validated message"
+    input_schema = {
+        "type": "object",
+        "properties": {"message": {"type": "string"}},
+        "required": ["message"],
+    }
+    output_schema = {"type": "object"}
+
+    async def execute(self, inputs: dict[str, Any], context: object | None = None) -> dict[str, Any]:
+        return {"echo": inputs["message"]}
+
+
+def _real_registry() -> Registry:
+    registry = Registry()
+    registry.register("demo.echo", _EchoModule())
+    return registry
+
+
+async def test_registry_resolver_creates_an_executable_executor() -> None:
+    from apcore_a2a._serve import _resolve_registry_and_executor
+
+    registry = _real_registry()
+    resolved, executor = _resolve_registry_and_executor(registry)
+    assert resolved is registry
+    assert isinstance(executor, Executor)
+    assert executor.registry is registry
+    assert await executor.call_async("demo.echo", {"message": "hello"}) == {"echo": "hello"}
+
+
+@pytest.mark.parametrize("backend", ["registry", "executor", "attached_executor"])
+async def test_async_serve_real_registry_executes_send_message(backend: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    from apcore_a2a import async_serve
+
+    registry = _real_registry()
+    supplied: Any = registry
+    executor = Executor.from_registry(registry)
+    if backend == "executor":
+        supplied = executor
+    elif backend == "attached_executor":
+        monkeypatch.setattr(registry, "executor", executor, raising=False)
+    app = await async_serve(supplied, name="Echo", url="http://test")
+    request = {
+        "jsonrpc": "2.0",
+        "id": "echo",
+        "method": "SendMessage",
+        "params": {
+            "message": {
+                "messageId": "echo-message",
+                "role": "ROLE_USER",
+                "parts": [{"data": {"message": "hello"}}],
+                "metadata": {"skillId": "demo.echo"},
+            }
+        },
+    }
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", json=request, headers={"A2A-Version": "1.0"})
+    assert response.status_code == 200
+    task = response.json()["result"]["task"]
+    assert task["status"]["state"] == "TASK_STATE_COMPLETED"
+    assert task["artifacts"][0]["parts"][0]["data"] == {"echo": "hello"}
+
+
+def test_registry_resolver_preserves_an_attached_executor(monkeypatch: pytest.MonkeyPatch) -> None:
+    from apcore_a2a._serve import _resolve_registry_and_executor
+
+    registry = _real_registry()
+    executor = Executor.from_registry(registry)
+    monkeypatch.setattr(registry, "executor", executor, raising=False)
+    resolved, actual = _resolve_registry_and_executor(registry)
+    assert resolved is registry
+    assert actual is executor
+
+
+def test_registry_resolver_treats_none_executor_as_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    from apcore_a2a._serve import _resolve_registry_and_executor
+
+    registry = _real_registry()
+    monkeypatch.setattr(registry, "executor", None, raising=False)
+    _, executor = _resolve_registry_and_executor(registry)
+    assert isinstance(executor, Executor)
+    assert executor.registry is registry
+
+
+@pytest.mark.parametrize("executor", [object(), {"call_async": None}, MagicMock(call_async=None)])
+def test_registry_resolver_rejects_invalid_attached_executor(executor: object, monkeypatch: pytest.MonkeyPatch) -> None:
+    from apcore_a2a._serve import _resolve_registry_and_executor
+
+    registry = _real_registry()
+    monkeypatch.setattr(registry, "executor", executor, raising=False)
+    with pytest.raises(TypeError, match="registry.executor must provide callable call_async"):
+        _resolve_registry_and_executor(registry)
