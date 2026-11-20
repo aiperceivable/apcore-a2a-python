@@ -306,7 +306,7 @@ def openapi_backend(
     """
     try:
         from apcore import Registry
-        from apcore_toolkit import HTTPProxyRegistryWriter
+        from apcore_toolkit import HTTPProxyRegistryWriter, validate_effective_proxy_modules
         from apcore_toolkit.openapi_scanner import OpenAPIScanner, load_spec
     except ImportError as exc:  # pragma: no cover - exercised by the extras matrix
         raise RuntimeError(
@@ -335,7 +335,7 @@ def openapi_backend(
     # The caller's own transform_module is handed to the scanner as it is, so it
     # runs FIRST: everything below operates on what `scan` returns, after that
     # hook, the toolkit's normalisation, its filters and its deduplication.
-    scanned = OpenAPIScanner().scan(
+    scanned = OpenAPIScanner().scan_with_effective_parameters(
         document,
         include=include,
         exclude=exclude,
@@ -424,6 +424,8 @@ def openapi_backend(
             "every proxied call would resolve against an unknown host. Set "
             "apcore-a2a.openapi.base_url."
         )
+
+    validate_effective_proxy_modules(modules)
 
     writer = HTTPProxyRegistryWriter(
         base_url=resolved_base,
